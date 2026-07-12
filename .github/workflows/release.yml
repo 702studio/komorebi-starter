@@ -55,7 +55,7 @@ jobs:
           .\scripts\New-ReleasePackage.ps1 -RepositoryRoot . -OutputRoot $releaseRoot
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
         with:
           subject-path: |
             ${{ runner.temp }}/komorebi-starter-release/komorebi-starter.zip
