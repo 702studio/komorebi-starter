@@ -13,8 +13,6 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
-    env:
-      RELEASE_ROOT: ${{ runner.temp }}\komorebi-starter-release
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -52,15 +50,16 @@ jobs:
       - name: Build deterministic release package
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Path $env:RELEASE_ROOT -Force | Out-Null
-          .\scripts\New-ReleasePackage.ps1 -RepositoryRoot . -OutputRoot $env:RELEASE_ROOT
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'komorebi-starter-release'
+          New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
+          .\scripts\New-ReleasePackage.ps1 -RepositoryRoot . -OutputRoot $releaseRoot
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45
         with:
           subject-path: |
-            ${{ env.RELEASE_ROOT }}\komorebi-starter.zip
-            ${{ env.RELEASE_ROOT }}\komorebi-starter.zip.sha256
+            ${{ runner.temp }}/komorebi-starter-release/komorebi-starter.zip
+            ${{ runner.temp }}/komorebi-starter-release/komorebi-starter.zip.sha256
 
       - name: Create GitHub Release
         shell: powershell
@@ -68,6 +67,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $zip = Join-Path $env:RELEASE_ROOT 'komorebi-starter.zip'
-          $checksum = Join-Path $env:RELEASE_ROOT 'komorebi-starter.zip.sha256'
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'komorebi-starter-release'
+          $zip = Join-Path $releaseRoot 'komorebi-starter.zip'
+          $checksum = Join-Path $releaseRoot 'komorebi-starter.zip.sha256'
           gh release create $env:RELEASE_TAG $zip $checksum --verify-tag --title "Release $env:RELEASE_TAG" --generate-notes

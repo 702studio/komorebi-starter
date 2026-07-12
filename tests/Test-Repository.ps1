@@ -2226,7 +2226,7 @@ Invoke-TestCheck 'documentation-and-release-governance-contract' {
             throw 'A workflow is not pinned to the repository analyzer policy and version 1.25.0.'
         }
     }
-    foreach ($requiredReleaseText in @('fetch-depth: 0', 'merge-base --is-ancestor', '-OutputRoot $env:RELEASE_ROOT', '--verify-tag')) {
+    foreach ($requiredReleaseText in @('fetch-depth: 0', 'merge-base --is-ancestor', '-OutputRoot $releaseRoot', '--verify-tag')) {
         if ($release -notlike "*$requiredReleaseText*") {
             throw "Release workflow is missing governance control: $requiredReleaseText"
         }
@@ -2234,6 +2234,11 @@ Invoke-TestCheck 'documentation-and-release-governance-contract' {
     if ($release -notmatch 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5' -or
         $release -notmatch 'actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45') {
         throw 'Release workflow actions are not pinned to the reviewed immutable SHAs.'
+    }
+    if ($ci -notmatch "version='1\.7\.12'" -or
+        $ci -notmatch '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8' -or
+        $ci -notmatch '\./actionlint') {
+        throw 'CI does not run the pinned, checksum-verified actionlint workflow validator.'
     }
 
     $readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
