@@ -7,14 +7,24 @@ A keyboard-driven Windows 11 desktop baseline for komorebi, whkd, masir, and kom
 - Windows PowerShell 5.1
 - Winget (for dependency installation; elevation may be requested)
 
-## Quick Start (Raw Bootstrap)
-Run the following command in Windows PowerShell to download and execute the bootstrap script.
+## Quick Start
+Run one command in Windows PowerShell:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1'))
+irm https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1 | iex
 ```
 
-*Note: The bootstrap fetches from the `main` branch, resolves the latest GitHub Release (failing closed if release metadata, assets, or hash validation fails), verifies the `komorebi-starter.zip` checksum, extracts it, and runs the installer. The raw invoke-expression cannot receive migration flags like `-MigrateFromGlazeWM`. For migration, prefer a clone installation.*
+The raw bootstrap resolves the latest GitHub Release, requires exact asset names and sizes, verifies the ZIP SHA-256, extracts it, and runs the installer. The short command uses default options. Use the parameterized agent command below for version pinning, JSON output, font installation, or GlazeWM migration.
+
+When `702studio.KomorebiStarter` becomes discoverable in the WinGet community catalog, the equivalent package-manager command is:
+
+```powershell
+winget install --exact --id 702studio.KomorebiStarter
+```
+
+Until `winget show --exact --id 702studio.KomorebiStarter` succeeds, use the bootstrap command above. The GitHub Release also provides `komorebi-starter-setup.exe`, a per-user installer with silent install, upgrade, and uninstall support.
+
+The EXE is not Authenticode-signed yet. Release SHA-256 files provide integrity checks and GitHub attestations provide build provenance; neither is a publisher code-signing certificate.
 
 **System changes:**
 - Winget ensures `LGUG2Z.komorebi`, `LGUG2Z.whkd`, and `LGUG2Z.masir`; the Komorebi package provides `komorebi-bar`.
@@ -88,7 +98,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Preset Mi
 ```
 
 ## Agent and Unattended Automation
-Perform a dry-run to view the execution plan without network requests or system mutation:
+Agents should read [`agent-manifest.json`](agent-manifest.json) before mutation. It defines the fixed paths, parameters, output contract, verification protocol, and recovery commands.
+
+Run a version-pinnable remote installation with JSON-only stdout:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1'))) -Version latest -NonInteractive -Quiet -Json
+```
+
+Perform a remote dry-run without network requests beyond fetching the raw bootstrap and without system mutation:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1'))) -Version latest -WhatIf -NonInteractive -Quiet -Json
+```
+
+From a clone or extracted release, view the local execution plan without network requests or system mutation:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Preset Minimal -WhatIf -NonInteractive -Quiet -Json
 ```

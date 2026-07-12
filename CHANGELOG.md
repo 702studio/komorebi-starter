@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Short `irm ... | iex` bootstrap command and a version-pinnable JSON agent command.
+- Installed `agent-manifest.json` machine contract for unattended automation.
+- Per-user Inno Setup installer with silent install, upgrade, and uninstall support.
+- WinGet community manifest generation from immutable release assets.
+
+### Changed
+- Release automation now publishes installer checksums, WinGet manifests, and provenance attestations.
+- Package-manager installs can supply dependencies without invoking nested WinGet operations.
+
 ## [0.1.0] - 2026-07-12
 
 ### Added

@@ -25,7 +25,8 @@ $allowedDestinations = @(
     (Join-Path $installDir 'doctor.ps1'),
     (Join-Path $installDir 'KomorebiStarter.Common.ps1'),
     (Join-Path $installDir 'restore.ps1'),
-    (Join-Path $installDir 'uninstall.ps1')
+    (Join-Path $installDir 'uninstall.ps1'),
+    (Join-Path $installDir 'agent-manifest.json')
 )
 
 function Test-Is64Hex {
@@ -512,7 +513,8 @@ function Assert-BackupRootValid {
             (Join-Path $ExpectedInstallDir 'doctor.ps1'),
             (Join-Path $ExpectedInstallDir 'KomorebiStarter.Common.ps1'),
             (Join-Path $ExpectedInstallDir 'restore.ps1'),
-            (Join-Path $ExpectedInstallDir 'uninstall.ps1')
+            (Join-Path $ExpectedInstallDir 'uninstall.ps1'),
+            (Join-Path $ExpectedInstallDir 'agent-manifest.json')
         )
         $allowedCanonical = @()
         foreach ($dest in $localAllowedDestinations) {

@@ -2,6 +2,32 @@
 
 This document details command-line outputs, recovery protocols, and verification guidelines for automated integrations.
 
+## Machine Contract
+
+Read [`agent-manifest.json`](agent-manifest.json) before installation. After installation, the same contract is available at `%LOCALAPPDATA%\Programs\KomorebiStarter\agent-manifest.json`.
+
+Install the latest verified release non-interactively:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1'))) -Version latest -NonInteractive -Quiet -Json
+```
+
+Replace `latest` with an immutable tag such as `v0.2.0` when reproducibility is required. Add `-WhatIf` for a plan, `-MigrateFromGlazeWM` for explicit takeover, or `-InstallFonts` for the optional font. Do not use `-Force` unless foreign or user-edited target files have been reviewed and backed up.
+
+Check for the WinGet package before selecting that route:
+
+```powershell
+winget show --exact --id 702studio.KomorebiStarter
+```
+
+If discovery succeeds, an unattended agent may install it with:
+
+```powershell
+winget install --exact --id 702studio.KomorebiStarter --silent --disable-interactivity --accept-package-agreements --accept-source-agreements
+```
+
+If discovery fails, use the remote bootstrap command. Do not infer that a prepared or submitted community manifest is already available in the catalog.
+
 ## Command Output Contract
 - **Stdout**: `wm state`, `wm global-state`, and `wm visible` return raw upstream JSON. `wm query` returns raw upstream output. Successful `wm` mutations return small JSON envelopes. `install.ps1`, `restore.ps1`, and `uninstall.ps1` provide JSON stdout only when invoked with the `-Json` switch.
 - **Stderr**: Diagnostic steps and logs.
@@ -13,7 +39,7 @@ Agents must follow the structured preflight, execution, and verification flow ou
 ## Safe Operations
 
 ### Installation
-Run a non-interactive, dry-run installation to verify the execution plan without network requests or system mutation:
+Run a non-interactive local dry-run to verify the execution plan without network requests or system mutation:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Preset Minimal -WhatIf -NonInteractive -Quiet -Json
 ```

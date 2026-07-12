@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "productId": "702studio.komorebi-starter",
+  "packageIdentifier": "702studio.KomorebiStarter",
+  "name": "Komorebi Starter",
+  "repository": "https://github.com/702studio/komorebi-starter",
+  "platform": {
+    "os": "Windows",
+    "minimumVersion": "10.0.22000",
+    "shell": "Windows PowerShell 5.1"
+  },
+  "installation": {
+    "humanCommand": "irm https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1 | iex",
+    "agentCommandTemplate": "& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1'))) -Version <version-or-latest> -NonInteractive -Quiet -Json",
+    "dryRunCommand": "& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1'))) -Version latest -WhatIf -NonInteractive -Quiet -Json",
+    "winget": {
+      "packageIdentifier": "702studio.KomorebiStarter",
+      "discoveryCommand": "winget show --exact --id 702studio.KomorebiStarter",
+      "installCommand": "winget install --exact --id 702studio.KomorebiStarter --silent --disable-interactivity --accept-package-agreements --accept-source-agreements",
+      "fallback": "Use agentCommandTemplate when the community package is not discoverable."
+    },
+    "bootstrapParameters": {
+      "Preset": {
+        "type": "string",
+        "allowed": [
+          "Minimal"
+        ],
+        "default": "Minimal"
+      },
+      "Version": {
+        "type": "string",
+        "default": "latest"
+      },
+      "NonInteractive": {
+        "type": "switch"
+      },
+      "Json": {
+        "type": "switch"
+      },
+      "InstallFonts": {
+        "type": "switch"
+      },
+      "MigrateFromGlazeWM": {
+        "type": "switch"
+      },
+      "Force": {
+        "type": "switch"
+      },
+      "Quiet": {
+        "type": "switch"
+      },
+      "WhatIf": {
+        "type": "switch",
+        "effect": "Returns a plan without network requests or system mutation."
+      }
+    },
+    "dependencies": [
+      "LGUG2Z.komorebi",
+      "LGUG2Z.whkd",
+      "LGUG2Z.masir"
+    ]
+  },
+  "paths": {
+    "install": "%LOCALAPPDATA%\\Programs\\KomorebiStarter",
+    "configuration": "%USERPROFILE%\\.config\\komorebi",
+    "state": "%LOCALAPPDATA%\\KomorebiStarter",
+    "installManifest": "%LOCALAPPDATA%\\KomorebiStarter\\install-manifest.json",
+    "agentManifest": "%LOCALAPPDATA%\\Programs\\KomorebiStarter\\agent-manifest.json"
+  },
+  "commands": {
+    "diagnose": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\\Programs\\KomorebiStarter\\doctor.ps1\" -Json",
+    "state": "wm state",
+    "globalState": "wm global-state",
+    "visibleWindows": "wm visible",
+    "status": "wm status",
+    "help": "wm help",
+    "mutations": [
+      "focus",
+      "move",
+      "workspace",
+      "send",
+      "move-and-follow",
+      "workspace-cycle",
+      "send-cycle",
+      "active-workspace",
+      "last-workspace",
+      "move-workspace",
+      "resize",
+      "resize-mode",
+      "layout",
+      "tiling-direction",
+      "cycle-layer",
+      "float",
+      "monocle",
+      "fullscreen",
+      "maximize",
+      "minimize",
+      "close",
+      "manage",
+      "unmanage",
+      "pause",
+      "retile",
+      "restore",
+      "reload",
+      "restart",
+      "start",
+      "stop",
+      "launch"
+    ]
+  },
+  "io": {
+    "successExitCode": 0,
+    "failureExitCode": "nonzero",
+    "jsonSwitch": "-Json",
+    "stdout": "JSON or raw upstream state output for documented structured commands.",
+    "stderr": "Progress and diagnostics."
+  },
+  "verification": {
+    "protocol": [
+      "Run doctor.ps1 -Json before mutation.",
+      "Capture wm state.",
+      "Run one wm mutation.",
+      "Capture wm state again and verify the expected change.",
+      "Use bounded polling for reload and restart.",
+      "Run doctor.ps1 -Json when verification fails."
+    ]
+  },
+  "recovery": {
+    "preserveConfig": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\\Programs\\KomorebiStarter\\uninstall.ps1\" -Quiet -Json",
+    "removeConfig": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\\Programs\\KomorebiStarter\\uninstall.ps1\" -RemoveConfig -Force -Quiet -Json",
+    "restore": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\\Programs\\KomorebiStarter\\restore.ps1\" -Quiet -Json",
+    "guard": "Recovery requires a validated product install manifest and linked backup hashes."
+  },
+  "trust": {
+    "bootstrap": "The raw main-branch script is a trust boundary. It resolves a release, validates exact asset names and sizes, verifies the ZIP SHA-256, and then runs the extracted installer.",
+    "checksum": "SHA-256 provides integrity evidence, not publisher authentication.",
+    "provenance": "GitHub artifact attestations provide separate build provenance evidence for release assets."
+  }
+}

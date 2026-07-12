@@ -1980,6 +1980,7 @@ Invoke-TestCheck 'deterministic-release-build-test' {
                         '^CHANGELOG\.md$',
                         '^CODE_OF_CONDUCT\.md$',
                         '^AGENTS\.md$',
+                        '^agent-manifest\.json$',
                         '^config/(?:komorebi|komorebi\.bar|komorebi\.bar\.jetbrains|applications\.local)\.json$',
                         '^config/whkdrc$',
                         '^scripts/(?:start|doctor|wm|wm-resize-mode|KomorebiStarter\.Common|change_scale)\.ps1$',
@@ -2003,6 +2004,7 @@ Invoke-TestCheck 'deterministic-release-build-test' {
                     'install.ps1',
                     'uninstall.ps1',
                     'restore.ps1',
+                    'agent-manifest.json',
                     'config/komorebi.json',
                     'config/komorebi.bar.json',
                     'config/komorebi.bar.jetbrains.json',
@@ -2267,6 +2269,139 @@ Invoke-TestCheck 'documentation-and-release-governance-contract' {
     }
 
     return 'Verified documentation accuracy, analyzer policy, immutable Actions, and release governance controls.'
+}
+
+# 35. Agent manifest agrees with executable installation contracts
+Invoke-TestCheck 'agent-manifest-contract' {
+    $agentManifestPath = Join-Path $repoRoot 'agent-manifest.json'
+    $agentManifest = Get-Content -LiteralPath $agentManifestPath -Raw | ConvertFrom-Json
+    if ($agentManifest.schemaVersion -ne 1 -or $agentManifest.productId -cne '702studio.komorebi-starter') {
+        throw 'Agent manifest product or schema identity is invalid.'
+    }
+    if ($agentManifest.packageIdentifier -cne '702studio.KomorebiStarter') {
+        throw 'Agent manifest WinGet package identifier is invalid.'
+    }
+    if ($agentManifest.installation.humanCommand -cne 'irm https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1 | iex') {
+        throw 'Agent manifest human bootstrap command drifted.'
+    }
+    if ($agentManifest.installation.agentCommandTemplate -notmatch '\[scriptblock\]::Create' -or
+        $agentManifest.installation.agentCommandTemplate -notmatch '-Version <version-or-latest>' -or
+        $agentManifest.installation.agentCommandTemplate -notmatch '-NonInteractive -Quiet -Json') {
+        throw 'Agent manifest parameterizable bootstrap command is incomplete.'
+    }
+
+    $bootstrapAst = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $repoRoot 'bootstrap.ps1'),
+        [ref]$null,
+        [ref]$null)
+    $actualParameters = @($bootstrapAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+    $manifestParameters = @($agentManifest.installation.bootstrapParameters.PSObject.Properties.Name)
+    foreach ($parameter in @('Preset', 'NonInteractive', 'Json', 'InstallFonts', 'MigrateFromGlazeWM', 'Force', 'Quiet', 'Version')) {
+        if ($actualParameters -notcontains $parameter -or $manifestParameters -notcontains $parameter) {
+            throw "Agent manifest is missing bootstrap parameter: $parameter"
+        }
+    }
+    if ($manifestParameters -notcontains 'WhatIf') {
+        throw 'Agent manifest is missing the SupportsShouldProcess WhatIf contract.'
+    }
+
+    $expectedPaths = [ordered]@{
+        install = '%LOCALAPPDATA%\Programs\KomorebiStarter'
+        configuration = '%USERPROFILE%\.config\komorebi'
+        state = '%LOCALAPPDATA%\KomorebiStarter'
+        agentManifest = '%LOCALAPPDATA%\Programs\KomorebiStarter\agent-manifest.json'
+    }
+    foreach ($entry in $expectedPaths.GetEnumerator()) {
+        if ($agentManifest.paths.($entry.Key) -cne $entry.Value) {
+            throw "Agent manifest path drifted for $($entry.Key)."
+        }
+    }
+
+    $installSource = Get-Content -LiteralPath (Join-Path $repoRoot 'install.ps1') -Raw
+    $commonSource = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\KomorebiStarter.Common.ps1') -Raw
+    if ($installSource -notmatch "name = 'agent-manifest\.json'" -or
+        $commonSource -notmatch 'Join-Path \$installDir ''agent-manifest\.json''') {
+        throw 'Agent manifest is not installed and ownership-validated as a program file.'
+    }
+    return 'Verified machine-readable install, path, parameter, output, and recovery contracts.'
+}
+
+# 36. Native installer and WinGet distribution contracts
+Invoke-TestCheck 'native-installer-and-winget-contract' {
+    $innoPath = Join-Path $repoRoot 'installer\KomorebiStarter.iss'
+    $installerBuilderPath = Join-Path $repoRoot 'scripts\New-Installer.ps1'
+    $wingetBuilderPath = Join-Path $repoRoot 'scripts\New-WinGetManifests.ps1'
+    $innoInstallerPath = Join-Path $repoRoot 'scripts\Install-InnoSetup.ps1'
+    foreach ($path in @($innoPath, $installerBuilderPath, $wingetBuilderPath, $innoInstallerPath)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Distribution source is missing: $path"
+        }
+    }
+
+    $inno = Get-Content -LiteralPath $innoPath -Raw
+    foreach ($required in @(
+        'AppId={{5FA3F095-B1A1-4B29-BC3F-AA25DDD5902C}',
+        'PrivilegesRequired=lowest',
+        'DefaultDirName={localappdata}\Programs\KomorebiStarter',
+        "HasCommandLineSwitch('/WINGET')",
+        "Result := Result + ' -SkipDependencies'",
+        '[UninstallRun]',
+        'ShouldRunProductUninstaller'
+    )) {
+        if ($inno.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "Inno Setup contract is missing: $required"
+        }
+    }
+    if ($inno -match '(?im)^PrivilegesRequired=(admin|poweruser)') {
+        throw 'Inno Setup must remain a per-user installer.'
+    }
+
+    $install = Get-Content -LiteralPath (Join-Path $repoRoot 'install.ps1') -Raw
+    if ($install -notmatch '\[switch\]\$SkipDependencies' -or
+        $install -notmatch 'if \(\$SkipDependencies\)') {
+        throw 'install.ps1 does not expose the package-manager dependency boundary.'
+    }
+
+    $innoInstaller = Get-Content -LiteralPath $innoInstallerPath -Raw
+    foreach ($required in @(
+        "requiredVersion = '6.7.3'",
+        'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe',
+        '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732',
+        '0a8757031b33777e4c9cbffee40f11a5062b36d25cbe144c1db73b6102b80ad7'
+    )) {
+        if ($innoInstaller.IndexOf($required, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            throw "Pinned Inno Setup supply-chain control is missing: $required"
+        }
+    }
+
+    $wingetBuilder = Get-Content -LiteralPath $wingetBuilderPath -Raw
+    foreach ($required in @(
+        "packageIdentifier = '702studio.KomorebiStarter'",
+        'releases/download/$tag/komorebi-starter-setup.exe',
+        'PackageIdentifier: LGUG2Z.komorebi',
+        'PackageIdentifier: LGUG2Z.whkd',
+        'PackageIdentifier: LGUG2Z.masir',
+        "ProductCode: '{5FA3F095-B1A1-4B29-BC3F-AA25DDD5902C}_is1'",
+        'Custom: /WINGET',
+        'ManifestVersion: $manifestVersion'
+    )) {
+        if ($wingetBuilder.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "WinGet generation contract is missing: $required"
+        }
+    }
+
+    $release = Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\release.yml') -Raw
+    foreach ($asset in @(
+        'komorebi-starter-setup.exe',
+        'komorebi-starter-setup.exe.sha256',
+        'winget-manifests.zip',
+        'winget-manifests.zip.sha256'
+    )) {
+        if ($release -notlike "*$asset*") {
+            throw "Release workflow does not publish and attest asset: $asset"
+        }
+    }
+    return 'Verified per-user installer identity, pinned compiler, dependency ownership, WinGet manifests, and release assets.'
 }
 
 # Verify PID stability for Absolute Test Safety
