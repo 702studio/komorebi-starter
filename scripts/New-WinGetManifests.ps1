@@ -43,7 +43,7 @@ function Assert-RegularPathAncestors {
 }
 
 $packageIdentifier = '702studio.KomorebiStarter'
-$manifestVersion = '1.12.0'
+$manifestVersion = '1.10.0'
 $tag = "v$Version"
 $releaseUrl = "https://github.com/702studio/komorebi-starter/releases/tag/$tag"
 $installerUrl = "https://github.com/702studio/komorebi-starter/releases/download/$tag/komorebi-starter-setup.exe"
@@ -69,7 +69,7 @@ New-Item -ItemType Directory -Path $manifestDir -Force | Out-Null
 Assert-RegularPathAncestors -Path $manifestDir
 
 $versionYaml = @"
-# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.12.0.schema.json
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.$manifestVersion.schema.json
 PackageIdentifier: $packageIdentifier
 PackageVersion: $Version
 DefaultLocale: en-US
@@ -78,7 +78,7 @@ ManifestVersion: $manifestVersion
 "@
 
 $localeYaml = @"
-# yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.$manifestVersion.schema.json
 PackageIdentifier: $packageIdentifier
 PackageVersion: $Version
 PackageLocale: en-US
@@ -108,7 +108,7 @@ ManifestVersion: $manifestVersion
 "@
 
 $installerYaml = @"
-# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.$manifestVersion.schema.json
 PackageIdentifier: $packageIdentifier
 PackageVersion: $Version
 Platform:
