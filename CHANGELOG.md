@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-12
+
 ### Added
 - Initial release of `komorebi-starter`.
 - One-command bootstrap with checksum integrity verification via `bootstrap.ps1`.

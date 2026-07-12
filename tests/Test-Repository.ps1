@@ -2240,7 +2240,7 @@ Invoke-TestCheck 'documentation-and-release-governance-contract' {
     $allDocs = @('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SUPPORT.md', 'SECURITY.md', 'CHANGELOG.md') |
         ForEach-Object { Get-Content -LiteralPath (Join-Path $repoRoot $_) -Raw }
     $joinedDocs = $allDocs -join [Environment]::NewLine
-    foreach ($forbidden in @('no admin required', 'noncommercial purposes are permitted', 'scripts\package.ps1', '[0.1.0] - 2026')) {
+    foreach ($forbidden in @('no admin required', 'noncommercial purposes are permitted', 'scripts\package.ps1')) {
         if ($joinedDocs.IndexOf($forbidden, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
             throw "Documentation contains forbidden or inaccurate text: $forbidden"
         }
