@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-13
+
 ### Added
 - Short `irm ... | iex` bootstrap command and a version-pinnable JSON agent command.
 - Installed `agent-manifest.json` machine contract for unattended automation.
