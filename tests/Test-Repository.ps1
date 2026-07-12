@@ -2231,8 +2231,9 @@ Invoke-TestCheck 'documentation-and-release-governance-contract' {
             throw "Release workflow is missing governance control: $requiredReleaseText"
         }
     }
-    if ($release -notmatch 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5' -or
-        $release -notmatch 'actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45') {
+    if ($ci -notmatch 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' -or
+        $release -notmatch 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' -or
+        $release -notmatch 'actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be') {
         throw 'Release workflow actions are not pinned to the reviewed immutable SHAs.'
     }
     if ($ci -notmatch "version='1\.7\.12'" -or
