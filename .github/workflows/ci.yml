@@ -60,6 +60,24 @@ jobs:
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Repository.ps1
 
+      - name: Install pinned Inno Setup compiler
+        shell: powershell
+        run: |
+          .\scripts\Install-InnoSetup.ps1 | Out-Null
+
+      - name: Build installer and validate WinGet manifests
+        shell: powershell
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'komorebi-starter-installer-test'
+          New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+          $installerHash = .\scripts\New-Installer.ps1 -Version '0.0.0' -RepositoryRoot . -OutputRoot $artifactRoot
+          $manifestRoot = Join-Path $artifactRoot 'winget'
+          $manifestDir = .\scripts\New-WinGetManifests.ps1 -Version '0.0.0' -InstallerSha256 $installerHash -OutputRoot $manifestRoot
+          winget validate --manifest $manifestDir --disable-interactivity
+          if ($LASTEXITCODE -ne 0) {
+              throw "WinGet manifest validation failed with exit code $LASTEXITCODE."
+          }
+
       - name: Test deterministic release packaging twice and compare hashes
         shell: powershell
         run: |

@@ -54,12 +54,53 @@ jobs:
           New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
           .\scripts\New-ReleasePackage.ps1 -RepositoryRoot . -OutputRoot $releaseRoot
 
+      - name: Install pinned Inno Setup compiler
+        shell: powershell
+        run: |
+          .\scripts\Install-InnoSetup.ps1 | Out-Null
+
+      - name: Build installer and WinGet manifests
+        shell: powershell
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+              throw "Release tag must be vMAJOR.MINOR.PATCH: $env:RELEASE_TAG"
+          }
+
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'komorebi-starter-release'
+          $installerHash = .\scripts\New-Installer.ps1 -Version $version -RepositoryRoot . -OutputRoot $releaseRoot
+          $wingetRoot = Join-Path $env:RUNNER_TEMP 'komorebi-starter-winget'
+          $manifestDir = .\scripts\New-WinGetManifests.ps1 -Version $version -InstallerSha256 $installerHash -OutputRoot $wingetRoot
+          winget validate --manifest $manifestDir --disable-interactivity
+          if ($LASTEXITCODE -ne 0) {
+              throw "WinGet manifest validation failed with exit code $LASTEXITCODE."
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $manifestZip = Join-Path $releaseRoot 'winget-manifests.zip'
+          [IO.Compression.ZipFile]::CreateFromDirectory(
+              $wingetRoot,
+              $manifestZip,
+              [IO.Compression.CompressionLevel]::Optimal,
+              $false)
+          $manifestHash = (Get-FileHash -LiteralPath $manifestZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText(
+              (Join-Path $releaseRoot 'winget-manifests.zip.sha256'),
+              "$manifestHash *winget-manifests.zip",
+              [Text.Encoding]::ASCII)
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
         with:
           subject-path: |
             ${{ runner.temp }}/komorebi-starter-release/komorebi-starter.zip
             ${{ runner.temp }}/komorebi-starter-release/komorebi-starter.zip.sha256
+            ${{ runner.temp }}/komorebi-starter-release/komorebi-starter-setup.exe
+            ${{ runner.temp }}/komorebi-starter-release/komorebi-starter-setup.exe.sha256
+            ${{ runner.temp }}/komorebi-starter-release/winget-manifests.zip
+            ${{ runner.temp }}/komorebi-starter-release/winget-manifests.zip.sha256
 
       - name: Create GitHub Release
         shell: powershell
@@ -70,4 +111,8 @@ jobs:
           $releaseRoot = Join-Path $env:RUNNER_TEMP 'komorebi-starter-release'
           $zip = Join-Path $releaseRoot 'komorebi-starter.zip'
           $checksum = Join-Path $releaseRoot 'komorebi-starter.zip.sha256'
-          gh release create $env:RELEASE_TAG $zip $checksum --verify-tag --title "Release $env:RELEASE_TAG" --generate-notes
+          $installer = Join-Path $releaseRoot 'komorebi-starter-setup.exe'
+          $installerChecksum = Join-Path $releaseRoot 'komorebi-starter-setup.exe.sha256'
+          $winget = Join-Path $releaseRoot 'winget-manifests.zip'
+          $wingetChecksum = Join-Path $releaseRoot 'winget-manifests.zip.sha256'
+          gh release create $env:RELEASE_TAG $zip $checksum $installer $installerChecksum $winget $wingetChecksum --verify-tag --title "Release $env:RELEASE_TAG" --generate-notes

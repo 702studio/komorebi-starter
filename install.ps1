@@ -7,6 +7,7 @@ param(
     [switch]$Json,
     [switch]$InstallFonts,
     [switch]$MigrateFromGlazeWM,
+    [switch]$SkipDependencies,
     [switch]$Force,
     [switch]$Quiet
 )
@@ -171,7 +172,7 @@ if (Test-Path -LiteralPath $manifestFile -PathType Leaf) {
     }
 }
 
-# The 15 target files subject to safety check
+# Target files subject to safety checks
 $targetFiles = @(
     (Join-Path $configHome 'komorebi.json'),
     (Join-Path $configHome 'applications.json'),
@@ -187,7 +188,8 @@ $targetFiles = @(
     (Join-Path $installDir 'doctor.ps1'),
     (Join-Path $installDir 'KomorebiStarter.Common.ps1'),
     (Join-Path $installDir 'restore.ps1'),
-    (Join-Path $installDir 'uninstall.ps1')
+    (Join-Path $installDir 'uninstall.ps1'),
+    (Join-Path $installDir 'agent-manifest.json')
 )
 
 foreach ($file in $targetFiles) {
@@ -234,10 +236,14 @@ $doctorResult = $null
 
 try {
     # [2] Ensuring winget dependencies
-    Write-Step '[2/8] Ensuring Komorebi, whkd and masir packages'
-    Ensure-Package -PackageId 'LGUG2Z.komorebi' -CommandName 'komorebic'
-    Ensure-Package -PackageId 'LGUG2Z.whkd' -CommandName 'whkd'
-    Ensure-Package -PackageId 'LGUG2Z.masir' -CommandName 'masir'
+    if ($SkipDependencies) {
+        Write-Step '[2/8] Using dependencies supplied by the package manager'
+    } else {
+        Write-Step '[2/8] Ensuring Komorebi, whkd and masir packages'
+        Ensure-Package -PackageId 'LGUG2Z.komorebi' -CommandName 'komorebic'
+        Ensure-Package -PackageId 'LGUG2Z.whkd' -CommandName 'whkd'
+        Ensure-Package -PackageId 'LGUG2Z.masir' -CommandName 'masir'
+    }
 
     if ($InstallFonts) {
         Write-Step 'Ensuring JetBrains Mono Nerd Font via winget...'
@@ -340,7 +346,8 @@ try {
         @{ name = 'doctor.ps1'; source = (Join-Path $sourceScripts 'doctor.ps1'); dest = (Join-Path $installDir 'doctor.ps1'); type = 'program' },
         @{ name = 'KomorebiStarter.Common.ps1'; source = (Join-Path $sourceScripts 'KomorebiStarter.Common.ps1'); dest = (Join-Path $installDir 'KomorebiStarter.Common.ps1'); type = 'program' },
         @{ name = 'restore.ps1'; source = (Join-Path $sourceRoot 'restore.ps1'); dest = (Join-Path $installDir 'restore.ps1'); type = 'program' },
-        @{ name = 'uninstall.ps1'; source = (Join-Path $sourceRoot 'uninstall.ps1'); dest = (Join-Path $installDir 'uninstall.ps1'); type = 'program' }
+        @{ name = 'uninstall.ps1'; source = (Join-Path $sourceRoot 'uninstall.ps1'); dest = (Join-Path $installDir 'uninstall.ps1'); type = 'program' },
+        @{ name = 'agent-manifest.json'; source = (Join-Path $sourceRoot 'agent-manifest.json'); dest = (Join-Path $installDir 'agent-manifest.json'); type = 'program' }
     )
 
     foreach ($act in $installActions) {
