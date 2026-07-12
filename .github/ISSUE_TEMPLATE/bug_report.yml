@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible install, runtime, shortcut, or recovery problem.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run `doctor.ps1 -Json` first. Redact usernames, local paths, and secrets before attaching output.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: State what happened and what you expected instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - Raw bootstrap
+        - Verified release archive
+        - Git clone
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Windows build and `komorebic --version`, `whkd --version`, and `masir --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      placeholder: |
+        1. Run ...
+        2. Press ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: doctor-output
+    attributes:
+      label: Redacted doctor output
+      description: Paste the JSON from the installed `doctor.ps1 -Json`.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials and identifying local paths from all attached output.
+          required: true

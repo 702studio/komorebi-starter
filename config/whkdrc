@@ -1,0 +1,106 @@
+.shell powershell
+.pause alt + shift + p
+.pause_hook & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" pause-hook
+
+# GlazeWM-compatible global bindings. The wm wrapper keeps all WM calls
+# non-interactive and provides the behaviours that komorebic does not expose
+# directly (percentage resize, active-workspace cycling and safe reloads).
+
+# Focus windows and workspaces.
+alt + up : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus up
+alt + down : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus down
+alt + j : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace-cycle previous
+alt + k : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace-cycle next
+ctrl + alt + left : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace-cycle previous
+ctrl + alt + right : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace-cycle next
+
+# Move focused windows.
+alt + shift + up : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move up
+alt + shift + down : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move down
+alt + shift + left : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move left
+alt + shift + right : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move right
+alt + shift + j : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send-cycle previous
+alt + shift + k : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send-cycle next
+ctrl + alt + shift + left : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send-cycle previous
+ctrl + alt + shift + right : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send-cycle next
+
+# Percentage-based resize and modal resize mode.
+alt + h : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" resize width -5
+alt + l : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" resize width 5
+alt + u : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" resize height 5
+alt + i : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" resize height -5
+alt + y : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" resize-mode
+
+# Layout and focused-window state.
+alt + shift + space : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" tiling-direction
+ctrl + alt + space : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" layout next
+ctrl + alt + shift + space : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" layout previous
+alt + oem_5 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" cycle-layer
+alt + space : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" float
+alt + t : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" float
+alt + f : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" fullscreen
+alt + n : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" minimize
+alt + q : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" close
+
+# Lifecycle and redraw.
+alt + shift + e : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" stop
+alt + shift + back : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" restart
+alt + shift + x : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" restart
+alt + shift + r : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" reload
+alt + shift + w : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" retile
+
+# Application launchers.
+alt + return : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" launch terminal
+alt + b : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" launch firefox
+alt + e : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" launch explorer
+alt + o : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" launch obsidian
+alt + r : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" launch flow
+alt + c : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" launch cursor
+
+# Active and recent workspace navigation.
+alt + s : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" active-workspace next
+alt + a : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" active-workspace previous
+alt + d : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" last-workspace
+
+# Named workspace focus.
+alt + 1 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 1
+alt + 2 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 2
+alt + 3 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 3
+alt + 4 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 4
+alt + 5 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 5
+alt + 6 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 6
+alt + 7 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 7
+alt + 8 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 8
+alt + 9 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace 9
+
+# Move the current workspace between monitors.
+alt + shift + a : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-workspace left
+alt + shift + f : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-workspace right
+alt + shift + d : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-workspace up
+alt + shift + s : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-workspace down
+
+# Send to a named workspace without following.
+alt + shift + 1 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 1
+alt + shift + 2 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 2
+alt + shift + 3 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 3
+alt + shift + 4 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 4
+alt + shift + 5 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 5
+alt + shift + 6 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 6
+alt + shift + 7 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 7
+alt + shift + 8 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 8
+alt + shift + 9 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" send 9
+
+# Move to a named workspace and follow.
+alt + ctrl + 1 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 1
+alt + ctrl + 2 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 2
+alt + ctrl + 3 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 3
+alt + ctrl + 4 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 4
+alt + ctrl + 5 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 5
+alt + ctrl + 6 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 6
+alt + ctrl + 7 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 7
+alt + ctrl + 8 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 8
+alt + ctrl + 9 : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" move-and-follow 9
+
+# Display scaling.
+ctrl + alt + shift + up : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\change_scale.ps1" up
+ctrl + alt + shift + down : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\change_scale.ps1" down

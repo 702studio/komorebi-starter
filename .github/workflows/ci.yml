@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install PSScriptAnalyzer
+        shell: powershell
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: Run PSScriptAnalyzer linting
+        shell: powershell
+        run: |
+          $files = Get-ChildItem -Path . -Filter *.ps1 -Recurse | Where-Object { $_.FullName -notmatch '[\\/]\.reference[\\/]' }
+          $results = foreach ($file in $files) {
+              Invoke-ScriptAnalyzer -Path $file.FullName -Settings .\PSScriptAnalyzerSettings.psd1
+          }
+          if ($results) {
+              $results | Format-Table
+              throw "PSScriptAnalyzer detected linting issues."
+          }
+
+      - name: Run repository tests
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Repository.ps1
+
+      - name: Test deterministic release packaging twice and compare hashes
+        shell: powershell
+        run: |
+          $tempDir1 = Join-Path $env:TEMP "komorebi-pkg-test-1"
+          $tempDir2 = Join-Path $env:TEMP "komorebi-pkg-test-2"
+
+          if (Test-Path -LiteralPath $tempDir1) { Remove-Item -LiteralPath $tempDir1 -Recurse -Force }
+          if (Test-Path -LiteralPath $tempDir2) { Remove-Item -LiteralPath $tempDir2 -Recurse -Force }
+
+          New-Item -ItemType Directory -Path $tempDir1 -Force | Out-Null
+          New-Item -ItemType Directory -Path $tempDir2 -Force | Out-Null
+
+          Write-Host "Running release packaging build 1..."
+          $hash1 = .\scripts\New-ReleasePackage.ps1 -RepositoryRoot . -OutputRoot $tempDir1
+
+          Write-Host "Running release packaging build 2..."
+          $hash2 = .\scripts\New-ReleasePackage.ps1 -RepositoryRoot . -OutputRoot $tempDir2
+
+          Write-Host "Build 1 Hash: $hash1"
+          Write-Host "Build 2 Hash: $hash2"
+
+          if ($hash1 -ne $hash2) {
+              throw "Build non-determinism detected! Hashes of two builds from same input differ: '$hash1' vs '$hash2'."
+          }
+
+          # Clean up
+          Remove-Item -LiteralPath $tempDir1 -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $tempDir2 -Recurse -Force -ErrorAction SilentlyContinue
+
+          Write-Host "Build determinism test passed successfully!"

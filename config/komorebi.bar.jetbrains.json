@@ -1,0 +1,77 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LGUG2Z/komorebi/v0.1.41/schema.bar.json",
+  "monitor": 0,
+  "height": 34,
+  "font_family": "JetBrainsMono Nerd Font",
+  "font_size": 13.0,
+  "icon_scale": 1.0,
+  "max_label_width": 384.0,
+  "widget_spacing": 8.0,
+  "padding": {
+    "horizontal": 12,
+    "vertical": 0
+  },
+  "margin": 0,
+  "transparency_alpha": 255,
+  "theme": {
+    "palette": "Custom",
+    "accent": "Base0D",
+    "colours": {
+      "base_00": "#121212",
+      "base_01": "#1A1A1A",
+      "base_02": "#2A2A2A",
+      "base_03": "#2A2A2A",
+      "base_04": "#404040",
+      "base_05": "#8A8A8A",
+      "base_06": "#E4E4E4",
+      "base_07": "#FFFFFF",
+      "base_08": "#D66868",
+      "base_09": "#D68568",
+      "base_0a": "#D6A268",
+      "base_0b": "#68B884",
+      "base_0c": "#68A2D6",
+      "base_0d": "#739FBF",
+      "base_0e": "#A485C2",
+      "base_0f": "#C285A4"
+    }
+  },
+  "left_widgets": [
+    {
+      "Komorebi": {
+        "workspaces": {
+          "enable": true,
+          "hide_empty_workspaces": false,
+          "display": "Text"
+        },
+        "layout": {
+          "enable": true,
+          "display": "Icon",
+          "options": [
+            "Grid",
+            "HorizontalStack",
+            "Columns",
+            "Rows"
+          ]
+        },
+        "focused_container": {
+          "enable": true,
+          "display": "Text"
+        },
+        "workspace_layer": {
+          "enable": false
+        }
+      }
+    }
+  ],
+  "center_widgets": [],
+  "right_widgets": [
+    {
+      "Time": {
+        "enable": true,
+        "format": {
+          "Custom": "%H:%M"
+        }
+      }
+    }
+  ]
+}

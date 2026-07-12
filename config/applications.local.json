@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LGUG2Z/komorebi/v0.1.41/schema.asc.json",
+  "Local - Window manager UI": {
+    "ignore": [
+      {
+        "kind": "Exe",
+        "id": "komorebi-bar.exe",
+        "matching_strategy": "Equals"
+      }
+    ]
+  },
+  "Local - Browser picture in picture": {
+    "ignore": [
+      [
+        {
+          "kind": "Title",
+          "id": "(?i)picture.?in.?picture",
+          "matching_strategy": "Regex"
+        },
+        {
+          "kind": "Class",
+          "id": "^(Chrome_WidgetWin_1|MozillaDialogClass)$",
+          "matching_strategy": "Regex"
+        }
+      ]
+    ]
+  }
+}

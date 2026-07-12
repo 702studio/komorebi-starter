@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      RELEASE_ROOT: ${{ runner.temp }}\komorebi-starter-release
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Require tag commit on main
+        shell: powershell
+        run: |
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+              throw "Release tag must point to a commit reachable from main."
+          }
+
+      - name: Install PSScriptAnalyzer
+        shell: powershell
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: Validate release source
+        shell: powershell
+        run: |
+          $files = Get-ChildItem -Path . -Filter *.ps1 -Recurse | Where-Object { $_.FullName -notmatch '[\\/]\.reference[\\/]' }
+          $results = foreach ($file in $files) {
+              Invoke-ScriptAnalyzer -Path $file.FullName -Settings .\PSScriptAnalyzerSettings.psd1
+          }
+          if ($results) {
+              $results | Format-Table
+              throw "PSScriptAnalyzer detected linting issues."
+          }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Test-Repository.ps1
+
+      - name: Build deterministic release package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path $env:RELEASE_ROOT -Force | Out-Null
+          .\scripts\New-ReleasePackage.ps1 -RepositoryRoot . -OutputRoot $env:RELEASE_ROOT
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45
+        with:
+          subject-path: |
+            ${{ env.RELEASE_ROOT }}\komorebi-starter.zip
+            ${{ env.RELEASE_ROOT }}\komorebi-starter.zip.sha256
+
+      - name: Create GitHub Release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $zip = Join-Path $env:RELEASE_ROOT 'komorebi-starter.zip'
+          $checksum = Join-Path $env:RELEASE_ROOT 'komorebi-starter.zip.sha256'
+          gh release create $env:RELEASE_TAG $zip $checksum --verify-tag --title "Release $env:RELEASE_TAG" --generate-notes

@@ -1,0 +1,17 @@
+# Ignore the read-only migration reference evidence
+.reference/
+
+# Ignore local temporary or runtime files
+*.tmp
+*.log
+temp_setdpi.exe
+
+# Ignore local backup folders
+KomorebiStarter/
+backups/
+LATEST.txt
+BASELINE.txt
+install-manifest.json
+
+# User config environment local files (if any get created in workspace)
+.config/

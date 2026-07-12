@@ -1,0 +1,83 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LGUG2Z/komorebi/v0.1.41/schema.json",
+  "app_specific_configuration_path": "$Env:KOMOREBI_CONFIG_HOME/applications.json",
+  "window_hiding_behaviour": "Cloak",
+  "cross_boundary_behaviour": "Monitor",
+  "cross_monitor_move_behaviour": "Insert",
+  "unmanaged_window_operation_behaviour": "Op",
+  "window_container_behaviour": "Create",
+  "default_workspace_padding": 2,
+  "default_container_padding": 2,
+  "resize_delta": 50,
+  "mouse_follows_focus": false,
+  "toggle_float_placement": "CenterAndResize",
+  "float_rule_placement": "Center",
+  "border": true,
+  "border_width": 2,
+  "border_offset": 0,
+  "border_style": "System",
+  "border_colours": {
+    "single": "#00D7FF",
+    "stack": "#00D7FF",
+    "monocle": "#00D7FF",
+    "floating": "#00D7FF"
+  },
+  "animation": {
+    "enabled": false
+  },
+  "monitors": [
+    {
+      "work_area_offset": {
+        "left": 0,
+        "top": 35,
+        "right": 0,
+        "bottom": 0
+      },
+      "workspaces": [
+        {
+          "name": "1",
+          "layout": "Grid"
+        },
+        {
+          "name": "2",
+          "layout": "Grid"
+        },
+        {
+          "name": "3",
+          "layout": "Grid"
+        },
+        {
+          "name": "4",
+          "layout": "Grid"
+        },
+        {
+          "name": "5",
+          "layout": "Grid",
+          "workspace_rules": [
+            {
+              "kind": "Exe",
+              "id": "(?i)^(bash|mintty|git-bash)(\\.exe)?$",
+              "matching_strategy": "Regex"
+            }
+          ]
+        },
+        {
+          "name": "6",
+          "layout": "Grid"
+        },
+        {
+          "name": "7",
+          "layout": "Grid"
+        },
+        {
+          "name": "8",
+          "layout": "Grid"
+        },
+        {
+          "name": "9",
+          "layout": "Grid"
+        }
+      ]
+    }
+  ]
+}
