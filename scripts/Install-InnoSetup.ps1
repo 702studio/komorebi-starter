@@ -16,10 +16,9 @@ $candidates = @(
 foreach ($candidate in $candidates) {
     if (Test-Path -LiteralPath $candidate -PathType Leaf) {
         $compilerSha256 = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash
-        if ($compilerSha256 -ine $expectedCompilerSha256) {
-            throw "Found an unexpected ISCC.exe binary; the compiler from Inno Setup $requiredVersion is required."
+        if ($compilerSha256 -ieq $expectedCompilerSha256) {
+            return $candidate
         }
-        return $candidate
     }
 }
 
@@ -62,10 +61,9 @@ try {
 foreach ($candidate in $candidates) {
     if (Test-Path -LiteralPath $candidate -PathType Leaf) {
         $compilerSha256 = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash
-        if ($compilerSha256 -ine $expectedCompilerSha256) {
-            throw 'ISCC.exe did not match the pinned compiler SHA-256 after installation.'
+        if ($compilerSha256 -ieq $expectedCompilerSha256) {
+            return $candidate
         }
-        return $candidate
     }
 }
-throw 'ISCC.exe was not found after installing Inno Setup.'
+throw "The compiler from Inno Setup $requiredVersion was not found after installation."

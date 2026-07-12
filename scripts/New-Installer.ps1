@@ -62,14 +62,19 @@ $isccCandidates = @(
     (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
     (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
 )
-$iscc = $isccCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-if ([string]::IsNullOrWhiteSpace($iscc)) {
-    throw 'ISCC.exe was not found. Install JRSoftware.InnoSetup 6.7.3 first.'
-}
 $expectedCompilerSha256 = '0a8757031b33777e4c9cbffee40f11a5062b36d25cbe144c1db73b6102b80ad7'
-$compilerSha256 = (Get-FileHash -LiteralPath $iscc -Algorithm SHA256).Hash
-if ($compilerSha256 -ine $expectedCompilerSha256) {
-    throw 'ISCC.exe does not match the compiler shipped by the pinned Inno Setup 6.7.3 installer.'
+$iscc = $null
+foreach ($candidate in $isccCandidates) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        $compilerSha256 = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash
+        if ($compilerSha256 -ieq $expectedCompilerSha256) {
+            $iscc = $candidate
+            break
+        }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($iscc)) {
+    throw 'The pinned ISCC.exe from Inno Setup 6.7.3 was not found.'
 }
 
 if (-not (Test-Path -LiteralPath $outputDir)) {
