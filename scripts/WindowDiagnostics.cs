@@ -42,6 +42,7 @@ namespace KomorebiStarter
             public long Hwnd { get; set; }
             public uint ProcessId { get; set; }
             public string ProcessName { get; set; }
+            public string ProcessPath { get; set; }
             public string Title { get; set; }
             public string ClassName { get; set; }
             public long OwnerHwnd { get; set; }
@@ -72,15 +73,15 @@ namespace KomorebiStarter
             public long ExStyle { get; set; }
 
             // Decoded Style and Extended Style Boolean Flags
-            public bool WsChild => (Style & 0x40000000L) != 0;
-            public bool WsDisabled => (Style & 0x08000000L) != 0;
-            public bool WsMinimize => (Style & 0x20000000L) != 0;
-            public bool WsVisible => (Style & 0x10000000L) != 0;
-            public bool WsExToolWindow => (ExStyle & 0x00000080L) != 0;
-            public bool WsExNoActivate => (ExStyle & 0x08000000L) != 0;
-            public bool WsExLayered => (ExStyle & 0x00080000L) != 0;
-            public bool WsExAppWindow => (ExStyle & 0x00040000L) != 0;
-            public bool WsExTransparent => (ExStyle & 0x00000020L) != 0;
+            public bool WsChild { get { return (Style & 0x40000000L) != 0; } }
+            public bool WsDisabled { get { return (Style & 0x08000000L) != 0; } }
+            public bool WsMinimize { get { return (Style & 0x20000000L) != 0; } }
+            public bool WsVisible { get { return (Style & 0x10000000L) != 0; } }
+            public bool WsExToolWindow { get { return (ExStyle & 0x00000080L) != 0; } }
+            public bool WsExNoActivate { get { return (ExStyle & 0x08000000L) != 0; } }
+            public bool WsExLayered { get { return (ExStyle & 0x00080000L) != 0; } }
+            public bool WsExAppWindow { get { return (ExStyle & 0x00040000L) != 0; } }
+            public bool WsExTransparent { get { return (ExStyle & 0x00000020L) != 0; } }
 
             public string Error { get; set; }
         }
@@ -164,22 +165,21 @@ namespace KomorebiStarter
         [DllImport("user32.dll")]
         public static extern int GetSystemMetrics(int nIndex);
 
-        [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
-        private static extern IntPtr GetWindowLongPtr32(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongW", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern int GetWindowLongW(IntPtr hWnd, int nIndex);
 
-        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]
-        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr GetWindowLongPtrW(IntPtr hWnd, int nIndex);
 
         [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
 
         public static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
         {
             if (IntPtr.Size == 8)
-                return GetWindowLongPtr64(hWnd, nIndex);
+                return GetWindowLongPtrW(hWnd, nIndex);
             else
-                return GetWindowLongPtr32(hWnd, nIndex);
+                return new IntPtr(GetWindowLongW(hWnd, nIndex));
         }
 
         public static string ReadWindowText(IntPtr window)
@@ -288,11 +288,20 @@ namespace KomorebiStarter
                         using (var proc = System.Diagnostics.Process.GetProcessById((int)pid))
                         {
                             info.ProcessName = proc.ProcessName;
+                            try
+                            {
+                                info.ProcessPath = proc.MainModule.FileName;
+                            }
+                            catch (Exception)
+                            {
+                                info.ProcessPath = null;
+                            }
                         }
                     }
                     catch (Exception)
                     {
                         info.ProcessName = null;
+                        info.ProcessPath = null;
                     }
 
                     info.Title = ReadWindowText(hwnd);

@@ -166,7 +166,6 @@ function Get-WindowsFromContainerObject {
 
 function Get-AllWorkspaceWindows {
     param(
-        $State,
         $MonitorIndex,
         $WorkspaceIndex,
         $Workspace,
@@ -361,7 +360,7 @@ function Get-KomorebiCommandOutput {
     }
 }
 
-function Safe-ResolveOutputDirectory {
+function Resolve-SafeOutputDirectory {
     param([string]$Path)
 
     if ([string]::IsNullOrEmpty($Path)) {
@@ -397,7 +396,67 @@ function Safe-ResolveOutputDirectory {
         $null = New-Item -ItemType Directory -Path $canonicalPath -Force
     }
 
+    # Re-check reparse points after creating/resolving it
+    $resolvedItem = Get-Item -LiteralPath $canonicalPath -Force
+    $isReparseResolved = [bool]($resolvedItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+    if ($isReparseResolved) {
+        throw "Resolved output directory is a reparse point: $canonicalPath"
+    }
+
     return $canonicalPath
+}
+
+function Protect-TitleField {
+    param(
+        $InputObject,
+        [bool]$IncludeTitles
+    )
+
+    if ($null -eq $InputObject) {
+        return $null
+    }
+
+    if ($IncludeTitles) {
+        return $InputObject
+    }
+
+    if ($InputObject -is [System.Management.Automation.PSCustomObject]) {
+        $newObj = [ordered]@{}
+        foreach ($prop in $InputObject.PSObject.Properties) {
+            $name = $prop.Name
+            $val = $prop.Value
+            if ($name -ieq 'title') {
+                $newObj[$name] = '[REDACTED]'
+            } else {
+                $newObj[$name] = Protect-TitleField -InputObject $val -IncludeTitles $false
+            }
+        }
+        return [pscustomobject]$newObj
+    }
+
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        $newDict = [ordered]@{}
+        foreach ($key in $InputObject.Keys) {
+            $name = [string]$key
+            $val = $InputObject[$key]
+            if ($name -ieq 'title') {
+                $newDict[$key] = '[REDACTED]'
+            } else {
+                $newDict[$key] = Protect-TitleField -InputObject $val -IncludeTitles $false
+            }
+        }
+        return $newDict
+    }
+
+    if ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string]) {
+        $newArray = New-Object System.Collections.Generic.List[System.Object]
+        foreach ($item in $InputObject) {
+            $newArray.Add((Protect-TitleField -InputObject $item -IncludeTitles $false))
+        }
+        return $newArray.ToArray()
+    }
+
+    return $InputObject
 }
 
 $warnings = New-Object System.Collections.Generic.List[string]
@@ -409,7 +468,10 @@ try {
         if (-not (Test-Path -LiteralPath $csPath -PathType Leaf)) {
             throw "Window diagnostics interop source is missing from $PSScriptRoot"
         }
-        Add-Type -Path $csPath
+        Add-Type -Path $csPath -ErrorAction Stop
+        if (-not ('KomorebiStarter.WindowDiagnostics' -as [type])) {
+            throw "WindowDiagnostics type could not be loaded after compilation."
+        }
     }
 } catch {
     $errorJson = @{
@@ -513,7 +575,7 @@ if ($null -ne $stateObj) {
                     $workspace = $workspaces[$wIdx]
                     if ($null -ne $workspace) {
                         $isFocusedWorkspace = ($wIdx -eq $focusedWorkspaceIndex)
-                        $wsWindows = Get-AllWorkspaceWindows -State $stateObj -MonitorIndex $mIdx -WorkspaceIndex $wIdx -Workspace $workspace -IsFocusedWorkspace $isFocusedWorkspace
+                        $wsWindows = Get-AllWorkspaceWindows -MonitorIndex $mIdx -WorkspaceIndex $wIdx -Workspace $workspace -IsFocusedWorkspace $isFocusedWorkspace
                         foreach ($w in $wsWindows) {
                             $hwndVal = [long]$w.hwnd
                             if (-not $managedWindowsMap.ContainsKey($hwndVal)) {
@@ -579,9 +641,9 @@ foreach ($w in $windows) {
     $offscreen = $w.IsOffscreen
     $zeroArea = $w.IsZeroArea
     
-    $isForeground = ($hwnd -eq $foregroundHwnd -or $w.RootHwnd -eq $foregroundHwnd)
-    $isKeyboardFocus = ($hwnd -eq $keyboardFocusHwnd -or $w.RootHwnd -eq $keyboardFocusHwnd)
-    $isMouseUnderRoot = ($hwnd -eq $mouseUnderRootHwnd -or $w.RootHwnd -eq $mouseUnderRootHwnd)
+    $isForeground = ($w.RootHwnd -ne 0 -and $foregroundRoot -ne 0 -and $w.RootHwnd -eq $foregroundRoot)
+    $isKeyboardFocus = ($w.RootHwnd -ne 0 -and $keyboardFocusRoot -ne 0 -and $w.RootHwnd -eq $keyboardFocusRoot)
+    $isMouseUnderRoot = ($w.RootHwnd -ne 0 -and $mouseUnderRootHwnd -ne 0 -and $w.RootHwnd -eq $mouseUnderRootHwnd)
 
     # Determine activation candidate
     # - Must not be a child window (top-level)
@@ -589,7 +651,7 @@ foreach ($w in $windows) {
     # - Must not be cloaked
     # - Must not have WS_EX_NOACTIVATE or WS_EX_TOOLWINDOW (unless it has WS_EX_APPWINDOW)
     # - Must not be zero area
-    $isActivationCandidate = (-not $w.WsChild -and $w.IsVisible -and $w.IsEnabled -and -not $w.IsCloaked -and -not $w.IsZeroArea -and -not $w.WsExNoActivate -and (-not $w.WsExToolWindow -or $w.WsExAppWindow))
+    $isActivationCandidate = (-not $w.WsChild -and $w.IsVisible -and $w.IsEnabled -and -not $w.IsMinimized -and -not $w.IsCloaked -and -not $w.IsOffscreen -and -not $w.IsZeroArea -and -not $w.WsExNoActivate -and (-not $w.WsExToolWindow -or $w.WsExAppWindow))
 
     $classifications = @()
     if ($isManaged) { $classifications += "managed" }
@@ -612,6 +674,7 @@ foreach ($w in $windows) {
         hwnd = $hwnd
         processId = $w.ProcessId
         processName = $w.ProcessName
+        processPath = $w.ProcessPath
         title = $title
         class = $w.ClassName
         ownerHwnd = $w.OwnerHwnd
@@ -635,7 +698,9 @@ foreach ($w in $windows) {
             area = $w.Area
         }
         style = $w.Style
+        styleHex = "0x{0:X8}" -f $w.Style
         exStyle = $w.ExStyle
+        exStyleHex = "0x{0:X8}" -f $w.ExStyle
         styleFlags = [ordered]@{
             WS_CHILD = $w.WsChild
             WS_DISABLED = $w.WsDisabled
@@ -713,7 +778,10 @@ foreach ($hwndKey in $managedWindowsMap.Keys) {
 }
 
 # 5. Mismatch between Komorebi's focused window root, Win32 foreground root, and keyboard-focus root
-$focusedKomorebiWin = Get-FocusedKomorebiWindow -State $stateObj
+$focusedKomorebiWin = $null
+if ($null -ne $stateObj) {
+    $focusedKomorebiWin = Get-FocusedKomorebiWindow -State $stateObj
+}
 $komorebiFocusedRoot = 0L
 if ($null -ne $focusedKomorebiWin -and $null -ne $focusedKomorebiWin.PSObject.Properties['hwnd']) {
     $komorebiFocusedHwnd = [long]$focusedKomorebiWin.hwnd
@@ -750,6 +818,10 @@ if ($hasMismatch) {
 }
 
 # 7. Assemble final report
+$redactedState = Protect-TitleField -InputObject $stateObj -IncludeTitles $IncludeTitles
+$redactedGlobalState = Protect-TitleField -InputObject $globalStateObj -IncludeTitles $IncludeTitles
+$redactedVisibleWindows = Protect-TitleField -InputObject $visibleWindowsObj -IncludeTitles $IncludeTitles
+
 $report = [ordered]@{
     ok = $true
     timestamp = [DateTime]::UtcNow.ToString("o")
@@ -763,11 +835,11 @@ $report = [ordered]@{
         mouseUnderRootHwnd = if ($systemDiag.CursorAvailable) { $systemDiag.MouseUnderRootHwnd } else { $null }
     }
     komorebi = [ordered]@{
-        state = $stateObj
+        state = $redactedState
         stateError = $stateError
-        globalState = $globalStateObj
+        globalState = $redactedGlobalState
         globalStateError = $globalStateError
-        visibleWindows = $visibleWindowsObj
+        visibleWindows = $redactedVisibleWindows
         visibleWindowsError = $visibleWindowsError
     }
     windows = $enrichedWindows
@@ -780,8 +852,8 @@ $report = [ordered]@{
 if (-not [string]::IsNullOrEmpty($OutputDirectory)) {
     $tempFilePath = $null
     try {
-        $safeDir = Safe-ResolveOutputDirectory -Path $OutputDirectory
-        $timestamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
+        $safeDir = Resolve-SafeOutputDirectory -Path $OutputDirectory
+        $timestamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssfffZ")
         $fileName = "window-diagnostics-$timestamp.json"
         $filePath = Join-Path $safeDir $fileName
         
@@ -789,12 +861,13 @@ if (-not [string]::IsNullOrEmpty($OutputDirectory)) {
         $report.outputPath = $filePath
         $jsonContent = [pscustomobject]$report | ConvertTo-Json -Depth 8 -Compress
         
-        $tempFilePath = "$filePath.tmp"
+        $tempFileName = "$([guid]::NewGuid().ToString()).tmp"
+        $tempFilePath = Join-Path $safeDir $tempFileName
         $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($tempFilePath, $jsonContent, $utf8NoBom)
         
         if (Test-Path -LiteralPath $filePath) {
-            Remove-Item -LiteralPath $filePath -Force
+            throw "Target diagnostic file already exists: $filePath"
         }
         [System.IO.File]::Move($tempFilePath, $filePath)
     } catch {
