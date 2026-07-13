@@ -2637,6 +2637,103 @@ Invoke-TestCheck 'foreground-focus-reliability-contract' {
     return 'Verified four-way bindings, bounded no-cursor activation, modal routing, read-only diagnostics, and Parsec guidance.'
 }
 
+Invoke-TestCheck 'window-event-trace-contract-static' {
+    $traceScriptPath = Join-Path $repoRoot 'scripts\window-event-trace.ps1'
+    if (-not (Test-Path -LiteralPath $traceScriptPath -PathType Leaf)) {
+        throw "Trace script is missing: $traceScriptPath"
+    }
+
+    $content = Get-Content -LiteralPath $traceScriptPath -Raw
+
+    # 1. PS5-safe AST surface
+    $tokens = $null
+    $errors = [System.Collections.Generic.List[Management.Automation.Language.ParseError]]::new()
+    $ast = [Management.Automation.Language.Parser]::ParseFile($traceScriptPath, [ref]$tokens, [ref]$errors)
+    if ($errors.Count -gt 0) {
+        throw "Trace script AST syntax errors: $($errors | ForEach-Object { $_.Message })"
+    }
+
+    # Verify no PS7-only syntax or operators in AST/tokens
+    foreach ($token in $tokens) {
+        if ($token.Kind -in @('AmpersandAmpersand', 'PipelinePipeline', 'QuestionQuestion')) {
+            throw "Forbidden PS7-only operator token found: $($token.Kind) at line $($token.Extent.StartLineNumber)"
+        }
+    }
+
+    # 2. unique named pipe construction
+    if ($content -notmatch '\[Guid\]::NewGuid\(\)') {
+        throw "Script must generate a cryptographically unique pipe name using a GUID."
+    }
+    if ($content -notmatch 'New-Object\s+System\.IO\.Pipes\.NamedPipeServerStream') {
+        throw "Script must construct a NamedPipeServerStream."
+    }
+
+    # 3. subscribe and guaranteed finally/unsubscribe ordering
+    if ($content -notmatch 'subscribe-pipe') {
+        throw "Script must call subscribe-pipe."
+    }
+    if ($content -notmatch 'unsubscribe-pipe') {
+        throw "Script must call unsubscribe-pipe."
+    }
+    if ($content -notmatch 'finally\s*\{[^}]*unsubscribe-pipe') {
+        throw "Script must call unsubscribe-pipe inside a finally block."
+    }
+
+    # 4. source state and raw line are not added to output records
+    if ($content -match '\.state\s*=') {
+        throw "Script must not retain or assign the 'state' property."
+    }
+    if ($content -match '\$events\.Add\(\$line\)') {
+        throw "Script must not add the raw line directly to captured events."
+    }
+
+    # 5. recursive title redaction default
+    if ($content -notmatch 'function\s+Protect-TitleField') {
+        throw "Script must define a Protect-TitleField function."
+    }
+    if ($content -notmatch 'if\s*\(\s*-not\s+\$IncludeTitles\s*\)\s*\{\s*Protect-TitleField') {
+        throw "Script must default to recursive title redaction when -IncludeTitles is not supplied."
+    }
+
+    # 6. process filter normalization
+    if ($content -notmatch 'EndsWith\(' -or $content -notmatch 'ToLowerInvariant\(') {
+        throw "Script must normalize process filter case-insensitively and handle optional .exe suffix."
+    }
+
+    # 7. bounded duration and event count
+    if ($content -notmatch '\[ValidateRange\(1,\s*120\)\]') {
+        throw "Script must validate DurationSeconds range 1..120."
+    }
+    if ($content -notmatch '\[ValidateRange\(1,\s*5000\)\]') {
+        throw "Script must validate MaxEvents range 1..5000."
+    }
+    if ($content -notmatch 'DurationSeconds\s*=\s*15') {
+        throw "Script must default DurationSeconds to 15."
+    }
+    if ($content -notmatch 'MaxEvents\s*=\s*1000') {
+        throw "Script must default MaxEvents to 1000."
+    }
+
+    # 8. exactly-one-JSON-object stdout contract
+    if ($content -notmatch 'ConvertTo-Json') {
+        throw "Script must output exactly one JSON object."
+    }
+
+    # 9. absence of lifecycle, package, input injection, cursor movement, and config mutation commands
+    $forbidden = @(
+        'SendInput', 'AttachThreadInput', 'SetCursorPos', 'mouse_event', 'keybd_event',
+        'komorebic\s+(?:start|stop|restart|reload|quick-start|config)',
+        'winget', 'choco', 'npm', 'pip', 'git\s+(?:clone|commit|push|pull|reset)'
+    )
+    foreach ($pat in $forbidden) {
+        if ($content -match $pat) {
+            throw "Trace script contains forbidden command or operation pattern: $pat"
+        }
+    }
+
+    return "Verified trace script static requirements successfully."
+}
+
 # Verify PID stability for Absolute Test Safety
 foreach ($name in $targetProcesses) {
     $currentPids = @(Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
