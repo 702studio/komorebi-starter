@@ -10,6 +10,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$focusInteropPath = Join-Path $PSScriptRoot 'FocusInterop.ps1'
+if (-not (Test-Path -LiteralPath $focusInteropPath -PathType Leaf)) {
+    throw "Focus interop helper was not found: $focusInteropPath"
+}
+. $focusInteropPath
+
 function Resolve-CommandPath {
     param([string]$CommandName)
     $cmd = Get-Command $CommandName -ErrorAction SilentlyContinue
@@ -50,6 +56,7 @@ $script:ConfigHome = if ($env:KOMOREBI_CONFIG_HOME) {
 $script:ConfigPath = Join-Path $script:ConfigHome 'komorebi.json'
 $script:RuntimeRoot = Join-Path $env:LOCALAPPDATA 'KomorebiStarter\agent'
 $script:StartScript = Join-Path $PSScriptRoot 'start.ps1'
+$script:FocusDiagnosticsScript = Join-Path $PSScriptRoot 'focus-diagnostics.ps1'
 $script:DefaultResizeDelta = 50
 
 function Assert-ArgumentCount {
@@ -483,8 +490,70 @@ switch ($normalizedCommand) {
     }
     'focus' {
         Assert-ArgumentCount -Minimum 1 -Usage 'focus <left|right|up|down>'
-        Invoke-KomorebicAction -Arguments @('focus', $ArgumentList[0])
-        Write-ActionResult -Name $normalizedCommand
+        $direction = $ArgumentList[0].ToLowerInvariant()
+        if ($direction -notin @('left', 'right', 'up', 'down')) {
+            throw "Invalid focus direction '$direction'."
+        }
+
+        # Keep key-repeat responsive; the mutex serializes only verification/repair.
+        Invoke-KomorebicAction -Arguments @('focus', $direction)
+        $focusMutex = [Threading.Mutex]::new($false, 'Local\KomorebiStarter.Focus')
+        $focusLockTaken = $false
+        try {
+            try {
+                $focusLockTaken = $focusMutex.WaitOne(750)
+            } catch [Threading.AbandonedMutexException] {
+                $focusLockTaken = $true
+            }
+            if (-not $focusLockTaken) {
+                throw 'Another directional focus operation is still in progress.'
+            }
+
+            Initialize-FocusInterop
+            $postCommandForeground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
+            $postCommandForegroundRoot = Get-RootWindowHandle -Window $postCommandForeground
+            $focusedWindow = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
+            if ($null -eq $focusedWindow -or $null -eq $focusedWindow.PSObject.Properties['hwnd']) {
+                throw 'Komorebi did not report a focused managed window after the focus command.'
+            }
+
+            $focusedHwnd = [long]$focusedWindow.hwnd
+            $activation = Invoke-ForegroundActivation -WindowHandle $focusedHwnd `
+                -PreviousForegroundRootHwnd (ConvertFrom-WindowHandle -Value $postCommandForegroundRoot)
+            if ($activation.attempts -gt 0) {
+                $verifiedTarget = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
+                if ($null -eq $verifiedTarget -or
+                    $null -eq $verifiedTarget.PSObject.Properties['hwnd'] -or
+                    [long]$verifiedTarget.hwnd -ne $focusedHwnd) {
+                    $activation.ok = $false
+                    $activation.reason = 'komorebi-target-changed-after-activation'
+                }
+            }
+            $result = [pscustomobject]@{
+                ok = $activation.ok
+                command = 'focus'
+                direction = $direction
+                targetHwnd = $focusedHwnd
+                activation = $activation
+                timestamp = (Get-Date).ToString('o')
+            }
+            $resultJson = $result | ConvertTo-Json -Depth 6 -Compress
+        } finally {
+            if ($focusLockTaken) {
+                $focusMutex.ReleaseMutex()
+            }
+            $focusMutex.Dispose()
+        }
+        if (-not $activation.ok) {
+            throw [InvalidOperationException]::new($resultJson)
+        }
+        $resultJson
+    }
+    'focus-health' {
+        if (-not (Test-Path -LiteralPath $script:FocusDiagnosticsScript -PathType Leaf)) {
+            throw "Focus diagnostic script was not found: $script:FocusDiagnosticsScript"
+        }
+        & $script:FocusDiagnosticsScript -Json
     }
     'move' {
         Assert-ArgumentCount -Minimum 1 -Usage 'move <left|right|up|down>'
@@ -686,6 +755,7 @@ wm global-state
 wm visible
 wm query <state-query>
 wm focus <left|right|up|down>
+wm focus-health
 wm move <left|right|up|down>
 wm workspace <name>
 wm send <name>

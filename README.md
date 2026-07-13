@@ -128,6 +128,13 @@ Check system health, path resolutions, and process states using the installed di
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\KomorebiStarter\doctor.ps1" -Json
 ```
 
+Inspect focus without changing any window, cursor position, or process:
+```powershell
+& "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus-health
+```
+
+The focus report compares the window selected by Komorebi with the Windows foreground root, keyboard-focus child, window under the mouse, and any active modal popup. Window titles and process names are omitted by default; run `focus-diagnostics.ps1 -Json -IncludeWindowMetadata` only when that detail is needed. A directional `wm focus` command returns a nonzero exit code when Windows does not activate the verified target after bounded repair attempts.
+
 Edit the configuration in `%USERPROFILE%\.config\komorebi\komorebi.json` and reload:
 ```powershell
 & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" reload
@@ -153,7 +160,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Progr
 ### Focus
 | Action | Shortcut |
 |---|---|
-| Focus up/down | `Alt + Up` / `Alt + Down` |
+| Focus left/right/up/down | `Alt + Left` / `Alt + Right` / `Alt + Up` / `Alt + Down` |
 | Workspace cycle previous/next | `Alt + J` / `Alt + K` |
 | Workspace cycle previous/next (alt) | `Ctrl + Alt + Left` / `Ctrl + Alt + Right` |
 | Active workspace previous/next | `Alt + A` / `Alt + S` |
@@ -206,6 +213,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Progr
 | Action | Shortcut |
 |---|---|
 | Scaling up/down | `Ctrl + Alt + Shift + Up` / `Ctrl + Alt + Shift + Down` |
+
+## Focus Behavior and Parsec
+
+`masir` changes focus only after relative mouse movement. A stationary pointer therefore does not override `Alt + Arrow` keyboard focus. When an application disables its managed owner for a modal dialog, the focus wrapper activates the visible, enabled last-active popup instead of the disabled owner.
+
+Parsec can capture shortcuts before `whkd` receives them. With Parsec's keyboard immersive mode active, use Parsec's configured **Immersive Mode** hotkey (default `Ctrl + Shift + I`) or **Detach Input** hotkey (default `Ctrl + Alt + Z`) before using local window-manager shortcuts. This input-capture boundary cannot be bypassed reliably by a local window-manager script. See [Parsec Immersive Mode](https://support.parsec.app/hc/en-us/articles/32361385571860-Immersive-Mode-Setting) and [Parsec hotkeys](https://support.parsec.app/hc/en-us/articles/32381778420372-Configure-Hotkeys).
+
+Run the repeatable [focus quality-assurance matrix](docs/FOCUS_QA.md) before reporting or releasing focus changes.
 
 ## Licensing
 Project scripts and configurations are [MIT Licensed](LICENSE). Komorebi, whkd, and masir use the custom Komorebi License Version 2.0.0 (SPDX NOASSERTION). Its Personal Uses section permits the listed personal uses when there is no anticipated commercial application; commercial use may require a separate license. Review [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the current upstream terms.

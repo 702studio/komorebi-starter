@@ -10,8 +10,9 @@ $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $checks = New-Object System.Collections.ArrayList
 $failures = New-Object System.Collections.ArrayList
 
-# PID snapshot for Absolute Test Safety
-$targetProcesses = @('komorebi', 'whkd', 'masir', 'komorebi-bar')
+# PID snapshot for Absolute Test Safety. Existing terminal hosts are protected
+# because repository tests must never interrupt a user's active sessions.
+$targetProcesses = @('komorebi', 'whkd', 'masir', 'komorebi-bar', 'WindowsTerminal', 'OpenConsole')
 $initialPids = @{}
 foreach ($name in $targetProcesses) {
     $pids = @(Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
@@ -1095,6 +1096,22 @@ Invoke-TestCheck 'install-manifest-validation-rejections' {
         Assert-InstallManifestValid -ManifestObj $copy -ExpectedProductId '702studio.komorebi-starter' -ExpectedSchemaVersion 1 -ExpectedInstallDir $installDir -ExpectedConfigHome $configHome
     }
 
+    $legacyAdditionNames = @('FocusInterop.cs', 'FocusInterop.dll', 'FocusInterop.ps1', 'focus-diagnostics.ps1')
+    $legacyManifest = ($validManifestObj | ConvertTo-Json -Depth 6) | ConvertFrom-Json
+    $legacyManifest.files = @($legacyManifest.files | Where-Object { $legacyAdditionNames -notcontains (Split-Path -Leaf $_.path) })
+    Assert-InstallManifestValid -ManifestObj $legacyManifest -ExpectedProductId '702studio.komorebi-starter' -ExpectedSchemaVersion 1 -ExpectedInstallDir $installDir -ExpectedConfigHome $configHome
+
+    $invalidLegacyProfile = ($legacyManifest | ConvertTo-Json -Depth 6) | ConvertFrom-Json
+    $invalidLegacyProfile.files = @($invalidLegacyProfile.files | Where-Object { (Split-Path -Leaf $_.path) -ne 'komorebi.json' })
+    $compiledEntry = @($validManifestObj.files | Where-Object { (Split-Path -Leaf $_.path) -eq 'FocusInterop.cs' })[0]
+    $invalidLegacyProfile.files += [pscustomobject]$compiledEntry
+    try {
+        Assert-InstallManifestValid -ManifestObj $invalidLegacyProfile -ExpectedProductId '702studio.komorebi-starter' -ExpectedSchemaVersion 1 -ExpectedInstallDir $installDir -ExpectedConfigHome $configHome
+        throw 'Failed to reject a schema-1 manifest that impersonates the legacy v0.2.0 file count.'
+    } catch {
+        if ($_ -notmatch 'does not match the current or legacy v0.2.0 file profile') { throw }
+    }
+
     # Test wrong installDir root
     try {
         & $testManifest { param($m) $m.installDir = 'C:\WrongRoot' }
@@ -1834,6 +1851,28 @@ Invoke-TestCheck 'no-mutating-script-child-execution-check' {
     return "Verified no mutating script child executions exist in Test-Repository."
 }
 
+Invoke-TestCheck 'terminal-lifecycle-static-safety-check' {
+    $scriptFiles = @(
+        Get-ChildItem -LiteralPath $repoRoot -Filter '*.ps1' -File
+        Get-ChildItem -LiteralPath (Join-Path $repoRoot 'scripts') -Filter '*.ps1' -File -Recurse
+    )
+
+    foreach ($scriptFile in $scriptFiles) {
+        $content = Get-Content -LiteralPath $scriptFile.FullName -Raw
+        foreach ($forbiddenPattern in @(
+            '(?is)Stop-Process\b[^\r\n]*(WindowsTerminal|OpenConsole)',
+            '(?is)taskkill(?:\.exe)?\b[^\r\n]*(WindowsTerminal|OpenConsole)',
+            '(?is)Get-Process\b[^\r\n]*(WindowsTerminal|OpenConsole)[^\r\n]*\|[^\r\n]*Stop-Process'
+        )) {
+            if ($content -match $forbiddenPattern) {
+                throw "Terminal lifecycle mutation found in $($scriptFile.FullName): $forbiddenPattern"
+            }
+        }
+    }
+
+    return 'Verified repository scripts do not terminate Windows Terminal host processes.'
+}
+
 # 28. bootstrap.ps1 -WhatIf -Json no-network static+child test
 Invoke-TestCheck 'bootstrap-whatif-json-test' {
     $bootstrapPath = Join-Path $repoRoot 'bootstrap.ps1'
@@ -1979,11 +2018,13 @@ Invoke-TestCheck 'deterministic-release-build-test' {
                         '^SUPPORT\.md$',
                         '^CHANGELOG\.md$',
                         '^CODE_OF_CONDUCT\.md$',
+                        '^docs/FOCUS_QA\.md$',
                         '^AGENTS\.md$',
                         '^agent-manifest\.json$',
                         '^config/(?:komorebi|komorebi\.bar|komorebi\.bar\.jetbrains|applications\.local)\.json$',
                         '^config/whkdrc$',
-                        '^scripts/(?:start|doctor|wm|wm-resize-mode|KomorebiStarter\.Common|change_scale)\.ps1$',
+                        '^scripts/FocusInterop\.cs$',
+                        '^scripts/(?:start|doctor|FocusInterop|focus-diagnostics|wm|wm-resize-mode|KomorebiStarter\.Common|change_scale)\.ps1$',
                         '^scripts/wm\.cmd$'
                     )
 
@@ -2005,6 +2046,7 @@ Invoke-TestCheck 'deterministic-release-build-test' {
                     'uninstall.ps1',
                     'restore.ps1',
                     'agent-manifest.json',
+                    'docs/FOCUS_QA.md',
                     'config/komorebi.json',
                     'config/komorebi.bar.json',
                     'config/komorebi.bar.jetbrains.json',
@@ -2012,6 +2054,9 @@ Invoke-TestCheck 'deterministic-release-build-test' {
                     'config/whkdrc',
                     'scripts/start.ps1',
                     'scripts/doctor.ps1',
+                    'scripts/FocusInterop.cs',
+                    'scripts/FocusInterop.ps1',
+                    'scripts/focus-diagnostics.ps1',
                     'scripts/wm.ps1',
                     'scripts/wm.cmd',
                     'scripts/wm-resize-mode.ps1',
@@ -2147,6 +2192,7 @@ Invoke-TestCheck 'distribution-audit-findings-static' {
         "README.md",
         "SECURITY.md",
         "CHANGELOG.md",
+        "docs/FOCUS_QA.md",
         "PSScriptAnalyzerSettings.psd1",
         "config/komorebi.json",
         "config/komorebi.bar.json",
@@ -2155,6 +2201,9 @@ Invoke-TestCheck 'distribution-audit-findings-static' {
         "config/whkdrc",
         "scripts/start.ps1",
         "scripts/doctor.ps1",
+        "scripts/FocusInterop.cs",
+        "scripts/FocusInterop.ps1",
+        "scripts/focus-diagnostics.ps1",
         "scripts/wm.ps1",
         "scripts/wm.cmd",
         "scripts/wm-resize-mode.ps1",
@@ -2310,6 +2359,8 @@ Invoke-TestCheck 'agent-manifest-contract' {
         configuration = '%USERPROFILE%\.config\komorebi'
         state = '%LOCALAPPDATA%\KomorebiStarter'
         agentManifest = '%LOCALAPPDATA%\Programs\KomorebiStarter\agent-manifest.json'
+        focusDiagnostics = '%LOCALAPPDATA%\Programs\KomorebiStarter\focus-diagnostics.ps1'
+        focusInteropAssembly = '%LOCALAPPDATA%\Programs\KomorebiStarter\FocusInterop.dll'
     }
     foreach ($entry in $expectedPaths.GetEnumerator()) {
         if ($agentManifest.paths.($entry.Key) -cne $entry.Value) {
@@ -2402,6 +2453,142 @@ Invoke-TestCheck 'native-installer-and-winget-contract' {
         }
     }
     return 'Verified per-user installer identity, pinned compiler, dependency ownership, WinGet manifests, and release assets.'
+}
+
+# 37. Directional focus and Win32 foreground verification contracts
+Invoke-TestCheck 'foreground-focus-reliability-contract' {
+    $whkd = Get-Content -LiteralPath (Join-Path $repoRoot 'config\whkdrc') -Raw
+    foreach ($direction in @('left', 'right', 'up', 'down')) {
+        $pattern = "(?m)^alt \+ $direction : .*wm\.ps1`" focus $direction\r?$"
+        $bindingMatches = [regex]::Matches($whkd, $pattern)
+        if ($bindingMatches.Count -ne 1) {
+            throw "Expected exactly one Alt+$direction focus binding; found $($bindingMatches.Count)."
+        }
+    }
+
+    $interopPath = Join-Path $repoRoot 'scripts\FocusInterop.ps1'
+    $interopSourcePath = Join-Path $repoRoot 'scripts\FocusInterop.cs'
+    $diagnosticPath = Join-Path $repoRoot 'scripts\focus-diagnostics.ps1'
+    $wmPath = Join-Path $repoRoot 'scripts\wm.ps1'
+    foreach ($path in @($interopPath, $interopSourcePath, $diagnosticPath, $wmPath)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Focus runtime file is missing: $path"
+        }
+    }
+
+    $interop = Get-Content -LiteralPath $interopPath -Raw
+    $interopSource = Get-Content -LiteralPath $interopSourcePath -Raw
+    foreach ($required in @(
+        'GetForegroundWindow',
+        'SetForegroundWindow',
+        'GetLastActivePopup',
+        'IsWindowEnabled',
+        'ValidateRange(1, 3)',
+        'DeadlineMilliseconds',
+        'PreviousForegroundRootHwnd',
+        'cursorMoved',
+        'keyboardFocusMatches'
+    )) {
+        if (($interop + $interopSource).IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "Focus interop contract is missing: $required"
+        }
+    }
+    if (($interop + $interopSource) -match '(?i)SendInput|SetCursorPos|mouse_event|AttachThreadInput|BringWindowToTop|SetWindowPos') {
+        throw 'Focus repair must not inject input, move the cursor, reorder windows, or attach input queues.'
+    }
+
+    $wm = Get-Content -LiteralPath $wmPath -Raw
+    foreach ($required in @('Invoke-ForegroundActivation', "'focus-health'", 'Local\KomorebiStarter.Focus', 'komorebi-target-changed-after-activation', 'InvalidOperationException')) {
+        if ($wm.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "wm focus verification contract is missing: $required"
+        }
+    }
+
+    $diagnostic = Get-Content -LiteralPath $diagnosticPath -Raw
+    if ($diagnostic -match 'Invoke-ForegroundActivation|::SetForegroundWindow|SendInput') {
+        throw 'focus-diagnostics.ps1 must remain read-only.'
+    }
+    foreach ($required in @('foreground-mismatch', 'keyboard-focus-mismatch', 'mouseUnder', 'modalRedirect')) {
+        if ($diagnostic.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "Focus diagnostic contract is missing: $required"
+        }
+    }
+
+    . $interopPath
+    $syntheticState = @{
+        monitors = @{
+            focused = 0
+            elements = @(@{
+                workspaces = @{
+                    focused = 0
+                    elements = @(@{
+                        layer = 'Tiling'
+                        monocle_container = $null
+                        maximized_window = $null
+                        floating_windows = @{ focused = 0; elements = @() }
+                        containers = @{
+                            focused = 0
+                            elements = @(@{
+                                windows = @{
+                                    focused = 0
+                                    elements = @(@{ hwnd = 123; title = 'Synthetic'; exe = 'test.exe'; class = 'Test' })
+                                }
+                            })
+                        }
+                    })
+                }
+            })
+        }
+    } | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+    $focused = Get-FocusedKomorebiWindow -State $syntheticState
+    if ($null -eq $focused -or [long]$focused.hwnd -ne 123) {
+        throw 'Synthetic Komorebi focus extraction failed.'
+    }
+
+    $invalidState = $syntheticState | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+    $invalidState.monitors.focused = 99
+    if ($null -ne (Get-FocusedKomorebiWindow -State $invalidState)) {
+        throw 'Out-of-range focused indexes must fail closed.'
+    }
+
+    $tempAssembly = Join-Path $env:TEMP ("FocusInterop-test-{0}.dll" -f [Guid]::NewGuid().ToString('N'))
+    try {
+        Add-Type -Path $interopSourcePath -OutputAssembly $tempAssembly -OutputType Library
+        if (-not (Test-Path -LiteralPath $tempAssembly -PathType Leaf)) {
+            throw 'FocusInterop.cs did not compile to an assembly.'
+        }
+    } finally {
+        Remove-Item -LiteralPath $tempAssembly -Force -ErrorAction SilentlyContinue
+    }
+
+    $install = Get-Content -LiteralPath (Join-Path $repoRoot 'install.ps1') -Raw
+    $common = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\KomorebiStarter.Common.ps1') -Raw
+    $inno = Get-Content -LiteralPath (Join-Path $repoRoot 'installer\KomorebiStarter.iss') -Raw
+    foreach ($required in @('FocusInterop.cs', 'FocusInterop.dll', 'focus-diagnostics.ps1')) {
+        if ($install.IndexOf($required, [StringComparison]::Ordinal) -lt 0 -or
+            $common.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "Install ownership is missing: $required"
+        }
+    }
+    foreach ($required in @('FocusInterop.cs', 'focus-diagnostics.ps1')) {
+        if ($inno.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "Inno payload is missing: $required"
+        }
+    }
+
+    $readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
+    foreach ($required in @('Alt + Left', 'wm.ps1" focus-health', 'Ctrl + Shift + I', 'Ctrl + Alt + Z')) {
+        if ($readme.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "README focus guidance is missing: $required"
+        }
+    }
+    $qa = Get-Content -LiteralPath (Join-Path $repoRoot 'docs\FOCUS_QA.md') -Raw
+    foreach ($required in @('Stationary mouse authority', 'Chrome keyboard input', 'Native modal', 'Parsec, immersive on', 'does not inject keyboard or mouse input')) {
+        if ($qa.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "Focus QA matrix is missing: $required"
+        }
+    }
+    return 'Verified four-way bindings, bounded no-cursor activation, modal routing, read-only diagnostics, and Parsec guidance.'
 }
 
 # Verify PID stability for Absolute Test Safety

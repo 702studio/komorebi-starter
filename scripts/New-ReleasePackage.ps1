@@ -77,6 +77,7 @@ $RequiredFiles = @(
     "README.md",
     "SECURITY.md",
     "CHANGELOG.md",
+    "docs/FOCUS_QA.md",
     "agent-manifest.json",
     "PSScriptAnalyzerSettings.psd1",
     "config/komorebi.json",
@@ -86,6 +87,9 @@ $RequiredFiles = @(
     "config/whkdrc",
     "scripts/start.ps1",
     "scripts/doctor.ps1",
+    "scripts/FocusInterop.cs",
+    "scripts/FocusInterop.ps1",
+    "scripts/focus-diagnostics.ps1",
     "scripts/wm.ps1",
     "scripts/wm.cmd",
     "scripts/wm-resize-mode.ps1",
@@ -129,11 +133,13 @@ $AllowedPatterns = @(
     '^SUPPORT\.md$',
     '^CHANGELOG\.md$',
     '^CODE_OF_CONDUCT\.md$',
+    '^docs/FOCUS_QA\.md$',
     '^AGENTS\.md$',
     '^agent-manifest\.json$',
     '^config/(?:komorebi|komorebi\.bar|komorebi\.bar\.jetbrains|applications\.local)\.json$',
     '^config/whkdrc$',
-    '^scripts/(?:start|doctor|wm|wm-resize-mode|KomorebiStarter\.Common|change_scale)\.ps1$',
+    '^scripts/FocusInterop\.cs$',
+    '^scripts/(?:start|doctor|FocusInterop|focus-diagnostics|wm|wm-resize-mode|KomorebiStarter\.Common|change_scale)\.ps1$',
     '^scripts/wm\.cmd$'
 )
 

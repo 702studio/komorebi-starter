@@ -180,6 +180,10 @@ $targetFiles = @(
     (Join-Path $configHome 'komorebi.bar.json'),
     (Join-Path $configHome 'komorebi.bar.jetbrains.json'),
     (Join-Path $configHome 'whkdrc'),
+    (Join-Path $installDir 'FocusInterop.cs'),
+    (Join-Path $installDir 'FocusInterop.dll'),
+    (Join-Path $installDir 'FocusInterop.ps1'),
+    (Join-Path $installDir 'focus-diagnostics.ps1'),
     (Join-Path $installDir 'wm.ps1'),
     (Join-Path $installDir 'wm.cmd'),
     (Join-Path $installDir 'wm-resize-mode.ps1'),
@@ -329,6 +333,16 @@ try {
         [IO.File]::WriteAllText($tempApplicationsJson, $mergedJson, [Text.UTF8Encoding]::new($false))
     }
 
+    $focusInteropAssembly = Join-Path $tempFetchRoot 'FocusInterop.dll'
+    if (-not $IsPlanMode) {
+        $focusInteropSource = Join-Path $sourceScripts 'FocusInterop.cs'
+        $null = Add-Type -Path $focusInteropSource -OutputAssembly $focusInteropAssembly -OutputType Library
+        if (-not (Test-Path -LiteralPath $focusInteropAssembly -PathType Leaf) -or
+            (Get-Item -LiteralPath $focusInteropAssembly).Length -le 0) {
+            throw 'Failed to compile the local FocusInterop.dll runtime assembly.'
+        }
+    }
+
     # [4] Calculate every desired installed hash
     $installActions = @(
         @{ name = 'komorebi.json'; source = (Join-Path $sourceConfig 'komorebi.json'); dest = (Join-Path $configHome 'komorebi.json'); type = 'config' },
@@ -338,6 +352,10 @@ try {
         @{ name = 'whkdrc'; source = (Join-Path $sourceConfig 'whkdrc'); dest = (Join-Path $configHome 'whkdrc'); type = 'config' },
         @{ name = 'applications.json'; source = $tempApplicationsJson; dest = (Join-Path $configHome 'applications.json'); type = 'config' },
 
+        @{ name = 'FocusInterop.cs'; source = (Join-Path $sourceScripts 'FocusInterop.cs'); dest = (Join-Path $installDir 'FocusInterop.cs'); type = 'program' },
+        @{ name = 'FocusInterop.dll'; source = $focusInteropAssembly; dest = (Join-Path $installDir 'FocusInterop.dll'); type = 'program' },
+        @{ name = 'FocusInterop.ps1'; source = (Join-Path $sourceScripts 'FocusInterop.ps1'); dest = (Join-Path $installDir 'FocusInterop.ps1'); type = 'program' },
+        @{ name = 'focus-diagnostics.ps1'; source = (Join-Path $sourceScripts 'focus-diagnostics.ps1'); dest = (Join-Path $installDir 'focus-diagnostics.ps1'); type = 'program' },
         @{ name = 'wm.ps1'; source = (Join-Path $sourceScripts 'wm.ps1'); dest = (Join-Path $installDir 'wm.ps1'); type = 'program' },
         @{ name = 'wm.cmd'; source = (Join-Path $sourceScripts 'wm.cmd'); dest = (Join-Path $installDir 'wm.cmd'); type = 'program' },
         @{ name = 'wm-resize-mode.ps1'; source = (Join-Path $sourceScripts 'wm-resize-mode.ps1'); dest = (Join-Path $installDir 'wm-resize-mode.ps1'); type = 'program' },
@@ -351,7 +369,7 @@ try {
     )
 
     foreach ($act in $installActions) {
-        if ($act.name -eq 'applications.json' -and $IsPlanMode) {
+        if ($act.name -in @('applications.json', 'FocusInterop.dll') -and $IsPlanMode) {
             $act.sha256 = '0000000000000000000000000000000000000000000000000000000000000000'
         } else {
             $act.sha256 = Get-FileSHA256 $act.source
@@ -360,7 +378,7 @@ try {
 
     # Verify source existence and desired SHA256 format before backup/mutations
     foreach ($act in $installActions) {
-        $skipSrcCheck = ($act.name -eq 'applications.json' -and $IsPlanMode)
+        $skipSrcCheck = ($act.name -in @('applications.json', 'FocusInterop.dll') -and $IsPlanMode)
         if (-not $skipSrcCheck) {
             if (-not (Test-Path -LiteralPath $act.source -PathType Leaf)) {
                 throw "Install source file does not exist: $($act.source)"

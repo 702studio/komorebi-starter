@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Read-only focus diagnostics for comparing Komorebi state with Win32 foreground, keyboard-focus, and mouse-under roots.
+- A locally compiled, manifest-owned Win32 interop assembly keeps dynamic C# compilation out of the installed focus path.
+
+### Fixed
+- `Alt+Left/Right/Up/Down` now provides complete directional focus coverage.
+- Directional focus verifies the real Windows foreground root, repairs bounded activation mismatches without moving the cursor, and redirects disabled modal owners to their active popup.
+- Upgrades accept the exact v0.2.0 schema-1 file profile while still rejecting partial or forged manifests.
+
 ## [0.2.0] - 2026-07-13
 
 ### Added

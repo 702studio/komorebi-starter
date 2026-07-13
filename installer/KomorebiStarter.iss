@@ -56,6 +56,9 @@ Source: "{#SourceRoot}\AGENTS.md"; DestDir: "{app}\payload"; Flags: ignoreversio
 Source: "{#SourceRoot}\config\*"; DestDir: "{app}\payload\config"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\scripts\start.ps1"; DestDir: "{app}\payload\scripts"; Flags: ignoreversion
 Source: "{#SourceRoot}\scripts\doctor.ps1"; DestDir: "{app}\payload\scripts"; Flags: ignoreversion
+Source: "{#SourceRoot}\scripts\FocusInterop.cs"; DestDir: "{app}\payload\scripts"; Flags: ignoreversion
+Source: "{#SourceRoot}\scripts\FocusInterop.ps1"; DestDir: "{app}\payload\scripts"; Flags: ignoreversion
+Source: "{#SourceRoot}\scripts\focus-diagnostics.ps1"; DestDir: "{app}\payload\scripts"; Flags: ignoreversion
 Source: "{#SourceRoot}\scripts\wm.ps1"; DestDir: "{app}\payload\scripts"; Flags: ignoreversion
 Source: "{#SourceRoot}\scripts\wm.cmd"; DestDir: "{app}\payload\scripts"; Flags: ignoreversion
 Source: "{#SourceRoot}\scripts\wm-resize-mode.ps1"; DestDir: "{app}\payload\scripts"; Flags: ignoreversion

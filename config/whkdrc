@@ -7,6 +7,8 @@
 # directly (percentage resize, active-workspace cycling and safe reloads).
 
 # Focus windows and workspaces.
+alt + left : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus left
+alt + right : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus right
 alt + up : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus up
 alt + down : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus down
 alt + j : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace-cycle previous

@@ -17,6 +17,10 @@ $allowedDestinations = @(
     (Join-Path $configHome 'komorebi.bar.json'),
     (Join-Path $configHome 'komorebi.bar.jetbrains.json'),
     (Join-Path $configHome 'whkdrc'),
+    (Join-Path $installDir 'FocusInterop.cs'),
+    (Join-Path $installDir 'FocusInterop.dll'),
+    (Join-Path $installDir 'FocusInterop.ps1'),
+    (Join-Path $installDir 'focus-diagnostics.ps1'),
     (Join-Path $installDir 'wm.ps1'),
     (Join-Path $installDir 'wm.cmd'),
     (Join-Path $installDir 'wm-resize-mode.ps1'),
@@ -505,6 +509,10 @@ function Assert-BackupRootValid {
             (Join-Path $ExpectedConfigHome 'komorebi.bar.json'),
             (Join-Path $ExpectedConfigHome 'komorebi.bar.jetbrains.json'),
             (Join-Path $ExpectedConfigHome 'whkdrc'),
+            (Join-Path $ExpectedInstallDir 'FocusInterop.cs'),
+            (Join-Path $ExpectedInstallDir 'FocusInterop.dll'),
+            (Join-Path $ExpectedInstallDir 'FocusInterop.ps1'),
+            (Join-Path $ExpectedInstallDir 'focus-diagnostics.ps1'),
             (Join-Path $ExpectedInstallDir 'wm.ps1'),
             (Join-Path $ExpectedInstallDir 'wm.cmd'),
             (Join-Path $ExpectedInstallDir 'wm-resize-mode.ps1'),
@@ -522,10 +530,16 @@ function Assert-BackupRootValid {
         }
 
         $filesList = @($filesProp.Value)
-        if ([int]$sVerProp.Value -eq 1) {
-            if ($filesList.Count -ne $allowedCanonical.Count) {
-                throw "File entry count ($($filesList.Count)) does not match expected allowed destinations count ($($allowedCanonical.Count))"
-            }
+        $legacyV020Additions = @(
+            (Get-CanonicalPath (Join-Path $ExpectedInstallDir 'FocusInterop.cs')),
+            (Get-CanonicalPath (Join-Path $ExpectedInstallDir 'FocusInterop.dll')),
+            (Get-CanonicalPath (Join-Path $ExpectedInstallDir 'FocusInterop.ps1')),
+            (Get-CanonicalPath (Join-Path $ExpectedInstallDir 'focus-diagnostics.ps1'))
+        )
+        if ([int]$sVerProp.Value -eq 1 -and
+            $filesList.Count -ne $allowedCanonical.Count -and
+            $filesList.Count -ne ($allowedCanonical.Count - $legacyV020Additions.Count)) {
+            throw "File entry count ($($filesList.Count)) does not match expected allowed destinations count ($($allowedCanonical.Count)) or legacy v0.2.0 profile"
         }
 
         $seenPaths = @{}
@@ -574,6 +588,17 @@ function Assert-BackupRootValid {
                 }
             } else {
                 throw "File entry path '$canonicalPath' is neither under configHome nor installDir"
+            }
+        }
+
+        if ([int]$sVerProp.Value -eq 1) {
+            $missingPaths = @($allowedCanonical | Where-Object { -not $seenPaths.ContainsKey($_.ToLowerInvariant()) })
+            if ($missingPaths.Count -ne 0) {
+                $missingKeys = @($missingPaths | ForEach-Object { $_.ToLowerInvariant() } | Sort-Object)
+                $legacyKeys = @($legacyV020Additions | ForEach-Object { $_.ToLowerInvariant() } | Sort-Object)
+                if (($missingKeys -join '|') -ne ($legacyKeys -join '|')) {
+                    throw "Schema-1 install manifest does not match the current or legacy v0.2.0 file profile. Missing: $($missingPaths -join ', ')"
+                }
             }
         }
 
