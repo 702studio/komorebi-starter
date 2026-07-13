@@ -1948,8 +1948,8 @@ Invoke-TestCheck 'deterministic-release-build-test' {
         if (-not (Test-Path -LiteralPath $zip2)) { throw "komorebi-starter.zip not generated in build 2" }
 
         # Verify physical file hashes are identical
-        $fhash1 = (Get-FileHash -Path $zip1 -Algorithm SHA256).Hash.ToLowerInvariant()
-        $fhash2 = (Get-FileHash -Path $zip2 -Algorithm SHA256).Hash.ToLowerInvariant()
+        $fhash1 = (Get-FileSHA256 $zip1).ToLowerInvariant()
+        $fhash2 = (Get-FileSHA256 $zip2).ToLowerInvariant()
 
         if ($fhash1 -ne $fhash2) {
             throw "deterministic build failed: file hashes of ZIPs differ ('$fhash1' vs '$fhash2')"
@@ -2260,7 +2260,24 @@ Invoke-TestCheck 'documentation-and-release-governance-contract' {
     if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
         throw 'PSScriptAnalyzerSettings.psd1 is missing.'
     }
-    $settings = Import-PowerShellDataFile -LiteralPath $settingsPath
+    $tokens = $null
+    $parseErrors = $null
+    $settingsAst = [Management.Automation.Language.Parser]::ParseFile(
+        $settingsPath,
+        [ref]$tokens,
+        [ref]$parseErrors
+    )
+    if (@($parseErrors).Count -gt 0) {
+        throw "PSScriptAnalyzerSettings.psd1 has parse errors: $($parseErrors -join '; ')"
+    }
+    $settingsHashtable = $settingsAst.Find(
+        { param($node) $node -is [Management.Automation.Language.HashtableAst] },
+        $true
+    )
+    if ($null -eq $settingsHashtable) {
+        throw 'PSScriptAnalyzerSettings.psd1 does not contain a hashtable.'
+    }
+    $settings = $settingsHashtable.SafeGetValue()
     foreach ($severity in @('Error', 'Warning')) {
         if (@($settings.Severity) -notcontains $severity) {
             throw "Analyzer settings do not include severity '$severity'."

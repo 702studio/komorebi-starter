@@ -159,6 +159,25 @@ function Get-NormalizedRelativePath {
     }
 }
 
+function Get-SHA256Hex {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $stream = $null
+    $hasher = $null
+    try {
+        $stream = [IO.File]::OpenRead([IO.Path]::GetFullPath($Path))
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        return [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        if ($null -ne $hasher) {
+            $hasher.Dispose()
+        }
+        if ($null -ne $stream) {
+            $stream.Dispose()
+        }
+    }
+}
+
 Write-Verbose "Scanning repository files..."
 $allFiles = Get-ChildItem -Path $realRepoRoot -Recurse -File
 $includedFiles = @()
@@ -289,7 +308,7 @@ try {
     if ((Get-Item -LiteralPath $zipPath -Force).Length -gt (50 * 1024 * 1024)) {
         throw "Security validation failed: Generated ZIP exceeds 50 MiB."
     }
-    $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = Get-SHA256Hex -Path $zipPath
     $shaContent = "$hash *komorebi-starter.zip"
 
     # Write exact checksum grammar as ASCII without BOM or a trailing newline.
