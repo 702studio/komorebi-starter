@@ -299,6 +299,71 @@ function Invoke-LayoutCommand {
     Invoke-KomorebicAction -Arguments @('change-layout', $normalized)
 }
 
+function Invoke-TargetActivationShared {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommandName,
+        [string]$Direction = $null
+    )
+
+    $focusMutex = [Threading.Mutex]::new($false, 'Local\KomorebiStarter.Focus')
+    $focusLockTaken = $false
+    try {
+        try {
+            $focusLockTaken = $focusMutex.WaitOne(750)
+        } catch [Threading.AbandonedMutexException] {
+            $focusLockTaken = $true
+        }
+        if (-not $focusLockTaken) {
+            throw 'Another directional focus operation is still in progress.'
+        }
+
+        Initialize-FocusInterop
+        $postCommandForeground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
+        $postCommandForegroundRoot = Get-RootWindowHandle -Window $postCommandForeground
+        $focusedWindow = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
+        if ($null -eq $focusedWindow -or $null -eq $focusedWindow.PSObject.Properties['hwnd']) {
+            throw 'Komorebi did not report a focused managed window.'
+        }
+
+        $focusedHwnd = [long]$focusedWindow.hwnd
+        $activation = Invoke-ForegroundActivation -WindowHandle $focusedHwnd `
+            -PreviousForegroundRootHwnd (ConvertFrom-WindowHandle -Value $postCommandForegroundRoot)
+        if ($activation.attempts -gt 0) {
+            $verifiedTarget = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
+            if ($null -eq $verifiedTarget -or
+                $null -eq $verifiedTarget.PSObject.Properties['hwnd'] -or
+                [long]$verifiedTarget.hwnd -ne $focusedHwnd) {
+                $activation.ok = $false
+                $activation.reason = 'komorebi-target-changed-after-activation'
+            }
+        }
+
+        $resultObj = [ordered]@{
+            ok = $activation.ok
+            command = $CommandName
+        }
+        if ($null -ne $Direction) {
+            $resultObj['direction'] = $Direction
+        }
+        $resultObj['targetHwnd'] = $focusedHwnd
+        $resultObj['activation'] = $activation
+        $resultObj['timestamp'] = (Get-Date).ToString('o')
+
+        $result = [pscustomobject]$resultObj
+        $resultJson = $result | ConvertTo-Json -Depth 6 -Compress
+    } finally {
+        if ($focusLockTaken) {
+            $focusMutex.ReleaseMutex()
+        }
+        $focusMutex.Dispose()
+    }
+    if (-not $activation.ok) {
+        throw [InvalidOperationException]::new($resultJson)
+    }
+    return $resultJson
+}
+
 function Start-DetachedScript {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -488,6 +553,9 @@ switch ($normalizedCommand) {
         Assert-ArgumentCount -Minimum 1 -Usage 'query <state-query>'
         (Invoke-KomorebicRaw -Arguments @('query', $ArgumentList[0])).Output
     }
+    'activate' {
+        Invoke-TargetActivationShared -CommandName 'activate'
+    }
     'focus' {
         Assert-ArgumentCount -Minimum 1 -Usage 'focus <left|right|up|down>'
         $direction = $ArgumentList[0].ToLowerInvariant()
@@ -497,57 +565,7 @@ switch ($normalizedCommand) {
 
         # Keep key-repeat responsive; the mutex serializes only verification/repair.
         Invoke-KomorebicAction -Arguments @('focus', $direction)
-        $focusMutex = [Threading.Mutex]::new($false, 'Local\KomorebiStarter.Focus')
-        $focusLockTaken = $false
-        try {
-            try {
-                $focusLockTaken = $focusMutex.WaitOne(750)
-            } catch [Threading.AbandonedMutexException] {
-                $focusLockTaken = $true
-            }
-            if (-not $focusLockTaken) {
-                throw 'Another directional focus operation is still in progress.'
-            }
-
-            Initialize-FocusInterop
-            $postCommandForeground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
-            $postCommandForegroundRoot = Get-RootWindowHandle -Window $postCommandForeground
-            $focusedWindow = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
-            if ($null -eq $focusedWindow -or $null -eq $focusedWindow.PSObject.Properties['hwnd']) {
-                throw 'Komorebi did not report a focused managed window after the focus command.'
-            }
-
-            $focusedHwnd = [long]$focusedWindow.hwnd
-            $activation = Invoke-ForegroundActivation -WindowHandle $focusedHwnd `
-                -PreviousForegroundRootHwnd (ConvertFrom-WindowHandle -Value $postCommandForegroundRoot)
-            if ($activation.attempts -gt 0) {
-                $verifiedTarget = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
-                if ($null -eq $verifiedTarget -or
-                    $null -eq $verifiedTarget.PSObject.Properties['hwnd'] -or
-                    [long]$verifiedTarget.hwnd -ne $focusedHwnd) {
-                    $activation.ok = $false
-                    $activation.reason = 'komorebi-target-changed-after-activation'
-                }
-            }
-            $result = [pscustomobject]@{
-                ok = $activation.ok
-                command = 'focus'
-                direction = $direction
-                targetHwnd = $focusedHwnd
-                activation = $activation
-                timestamp = (Get-Date).ToString('o')
-            }
-            $resultJson = $result | ConvertTo-Json -Depth 6 -Compress
-        } finally {
-            if ($focusLockTaken) {
-                $focusMutex.ReleaseMutex()
-            }
-            $focusMutex.Dispose()
-        }
-        if (-not $activation.ok) {
-            throw [InvalidOperationException]::new($resultJson)
-        }
-        $resultJson
+        Invoke-TargetActivationShared -CommandName 'focus' -Direction $direction
     }
     'focus-health' {
         if (-not (Test-Path -LiteralPath $script:FocusDiagnosticsScript -PathType Leaf)) {
@@ -755,6 +773,7 @@ wm global-state
 wm visible
 wm query <state-query>
 wm focus <left|right|up|down>
+wm activate
 wm focus-health
 wm move <left|right|up|down>
 wm workspace <name>

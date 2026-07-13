@@ -98,22 +98,38 @@ function Get-ActivationTarget {
     $blockedReason = $null
     $managedRootEnabled = [KomorebiStarter.NativeFocus]::IsWindowEnabled($managedRoot)
 
+    $exStyle = [KomorebiStarter.NativeFocus]::GetWindowLongPtr($managedRoot, -20).ToInt64()
+    $managedRootNoActivate = (($exStyle -band 0x08000000) -ne 0)
+    $managedRootMinimized = [KomorebiStarter.NativeFocus]::IsIconic($managedRoot)
+
     if (-not [KomorebiStarter.NativeFocus]::IsWindowVisible($managedRoot)) {
         $blockedReason = 'managed-root-not-visible'
+    } elseif ($managedRootMinimized) {
+        $blockedReason = 'managed-root-minimized'
+    } elseif ($managedRootNoActivate) {
+        $blockedReason = 'managed-root-noactivate'
     } elseif (-not $managedRootEnabled) {
         $popup = [KomorebiStarter.NativeFocus]::GetLastActivePopup($managedRoot)
-        $popupRootOwner = Get-RootOwnerWindowHandle -Window $popup
-        $validPopup = ($popup -ne [IntPtr]::Zero -and
-            $popup -ne $managedRoot -and
-            [KomorebiStarter.NativeFocus]::IsWindow($popup) -and
-            [KomorebiStarter.NativeFocus]::IsWindowVisible($popup) -and
-            [KomorebiStarter.NativeFocus]::IsWindowEnabled($popup) -and
-            $popupRootOwner -eq $managedRootOwner)
-        if ($validPopup) {
-            $activationWindow = $popup
-            $modalRedirect = $true
+        if ($popup -eq $managedRoot -or $popup -eq [IntPtr]::Zero) {
+            $blockedReason = 'managed-root-disabled'
         } else {
-            $blockedReason = 'modal-blocked-no-valid-popup'
+            $popupRootOwner = Get-RootOwnerWindowHandle -Window $popup
+            $popupExStyle = [KomorebiStarter.NativeFocus]::GetWindowLongPtr($popup, -20).ToInt64()
+            $popupNoActivate = (($popupExStyle -band 0x08000000) -ne 0)
+            $popupMinimized = [KomorebiStarter.NativeFocus]::IsIconic($popup)
+
+            $validPopup = ([KomorebiStarter.NativeFocus]::IsWindow($popup) -and
+                [KomorebiStarter.NativeFocus]::IsWindowVisible($popup) -and
+                [KomorebiStarter.NativeFocus]::IsWindowEnabled($popup) -and
+                -not $popupMinimized -and
+                -not $popupNoActivate -and
+                $popupRootOwner -eq $managedRootOwner)
+            if ($validPopup) {
+                $activationWindow = $popup
+                $modalRedirect = $true
+            } else {
+                $blockedReason = 'modal-blocked-no-valid-popup'
+            }
         }
     }
 
@@ -148,7 +164,10 @@ function Invoke-ForegroundActivation {
     $foregroundRoot = $initialForegroundRoot
     $keyboardFocus = [KomorebiStarter.NativeFocus]::GetKeyboardFocusWindow()
     $keyboardFocusRoot = Get-RootWindowHandle -Window $keyboardFocus
-    $verified = ($foregroundRoot -eq $target.expectedRoot)
+
+    $foregroundMatches = ($foregroundRoot -eq $target.expectedRoot)
+    $keyboardFocusMatches = ($keyboardFocus -eq [IntPtr]::Zero -or $keyboardFocusRoot -eq $target.expectedRoot)
+    $verified = ($foregroundMatches -and $keyboardFocusMatches)
     $initialVerified = $verified
     $attempts = 0
     $setForegroundAccepted = $false
@@ -176,10 +195,16 @@ function Invoke-ForegroundActivation {
 
         $foreground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
         $foregroundRoot = Get-RootWindowHandle -Window $foreground
-        if ($foregroundRoot -eq $target.expectedRoot) {
+        $keyboardFocus = [KomorebiStarter.NativeFocus]::GetKeyboardFocusWindow()
+        $keyboardFocusRoot = Get-RootWindowHandle -Window $keyboardFocus
+
+        $foregroundMatches = ($foregroundRoot -eq $target.expectedRoot)
+        $keyboardFocusMatches = ($keyboardFocus -eq [IntPtr]::Zero -or $keyboardFocusRoot -eq $target.expectedRoot)
+        if ($foregroundMatches -and $keyboardFocusMatches) {
             $verified = $true
             break
         }
+
         if ($PreviousForegroundRootHwnd -ne 0 -and
             $foregroundRoot -ne [IntPtr]::Zero -and
             (ConvertFrom-WindowHandle -Value $foregroundRoot) -ne $PreviousForegroundRootHwnd) {
@@ -196,7 +221,13 @@ function Invoke-ForegroundActivation {
 
         $foreground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
         $foregroundRoot = Get-RootWindowHandle -Window $foreground
-        $verified = ($foregroundRoot -eq $target.expectedRoot)
+        $keyboardFocus = [KomorebiStarter.NativeFocus]::GetKeyboardFocusWindow()
+        $keyboardFocusRoot = Get-RootWindowHandle -Window $keyboardFocus
+
+        $foregroundMatches = ($foregroundRoot -eq $target.expectedRoot)
+        $keyboardFocusMatches = ($keyboardFocus -eq [IntPtr]::Zero -or $keyboardFocusRoot -eq $target.expectedRoot)
+        $verified = ($foregroundMatches -and $keyboardFocusMatches)
+
         $currentCursor = Get-CursorSnapshot
         if (Test-CursorSnapshotChanged -Before $cursorBefore -After $currentCursor) {
             $verified = $false
@@ -205,15 +236,29 @@ function Invoke-ForegroundActivation {
     }
 
     $stopwatch.Stop()
+
+    # Final post-loop verify
+    $foreground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
+    $foregroundRoot = Get-RootWindowHandle -Window $foreground
+    $keyboardFocus = [KomorebiStarter.NativeFocus]::GetKeyboardFocusWindow()
+    $keyboardFocusRoot = Get-RootWindowHandle -Window $keyboardFocus
+
+    $foregroundMatches = ($foregroundRoot -eq $target.expectedRoot)
+    $keyboardFocusMatches = ($keyboardFocus -eq [IntPtr]::Zero -or $keyboardFocusRoot -eq $target.expectedRoot)
+    $verified = ($foregroundMatches -and $keyboardFocusMatches)
+
     if ($verified) {
         $reason = if ($initialVerified) { 'already-foreground' } else { 'repaired' }
     } elseif ([string]::IsNullOrEmpty($reason)) {
         $reason = if ($stopwatch.ElapsedMilliseconds -ge $DeadlineMilliseconds) { 'deadline-exceeded' } else { 'foreground-denied' }
     }
 
-    $keyboardFocus = [KomorebiStarter.NativeFocus]::GetKeyboardFocusWindow()
-    $keyboardFocusRoot = Get-RootWindowHandle -Window $keyboardFocus
     $cursorAfter = Get-CursorSnapshot
+    $cursorMoved = Test-CursorSnapshotChanged -Before $cursorBefore -After $cursorAfter
+    if (-not $verified -and $cursorMoved -and $reason -ne 'mouse-moved') {
+        $reason = 'mouse-moved'
+    }
+
     [pscustomobject]@{
         ok = $verified
         reason = $reason
@@ -227,14 +272,15 @@ function Invoke-ForegroundActivation {
         foregroundRootHwnd = ConvertFrom-WindowHandle -Value $foregroundRoot
         keyboardFocusHwnd = ConvertFrom-WindowHandle -Value $keyboardFocus
         keyboardFocusRootHwnd = ConvertFrom-WindowHandle -Value $keyboardFocusRoot
-        keyboardFocusMatches = ($keyboardFocus -eq [IntPtr]::Zero -or $keyboardFocusRoot -eq $target.expectedRoot)
+        foregroundMatches = $foregroundMatches
+        keyboardFocusMatches = $keyboardFocusMatches
         repaired = (-not $initialVerified -and $verified)
         modalRedirect = $target.modalRedirect
         managedRootEnabled = $target.managedRootEnabled
         attempts = $attempts
         elapsedMilliseconds = $stopwatch.ElapsedMilliseconds
         setForegroundAccepted = $setForegroundAccepted
-        cursorMoved = Test-CursorSnapshotChanged -Before $cursorBefore -After $cursorAfter
+        cursorMoved = $cursorMoved
     }
 }
 

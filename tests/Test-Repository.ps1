@@ -2504,10 +2504,21 @@ Invoke-TestCheck 'foreground-focus-reliability-contract' {
         'DeadlineMilliseconds',
         'PreviousForegroundRootHwnd',
         'cursorMoved',
-        'keyboardFocusMatches'
+        'foregroundMatches',
+        'keyboardFocusMatches',
+        'managed-root-not-visible',
+        'managed-root-disabled',
+        'managed-root-minimized',
+        'managed-root-noactivate',
+        'modal-blocked-no-valid-popup'
     )) {
         if (($interop + $interopSource).IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
             throw "Focus interop contract is missing: $required"
+        }
+    }
+    foreach ($requiredAbi in @('IsIconic', 'GetWindowLongW', 'GetWindowLongPtrW')) {
+        if ($interopSource.IndexOf($requiredAbi, [StringComparison]::Ordinal) -lt 0) {
+            throw "FocusInterop.cs is missing ABI declaration: $requiredAbi"
         }
     }
     if (($interop + $interopSource) -match '(?i)SendInput|SetCursorPos|mouse_event|AttachThreadInput|BringWindowToTop|SetWindowPos') {
@@ -2515,10 +2526,14 @@ Invoke-TestCheck 'foreground-focus-reliability-contract' {
     }
 
     $wm = Get-Content -LiteralPath $wmPath -Raw
-    foreach ($required in @('Invoke-ForegroundActivation', "'focus-health'", 'Local\KomorebiStarter.Focus', 'komorebi-target-changed-after-activation', 'InvalidOperationException')) {
+    foreach ($required in @('Invoke-ForegroundActivation', "'focus-health'", 'Local\KomorebiStarter.Focus', 'komorebi-target-changed-after-activation', 'InvalidOperationException', 'Invoke-TargetActivationShared', "'activate'")) {
         if ($wm.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
             throw "wm focus verification contract is missing: $required"
         }
+    }
+    # Verify 'wm activate' contains no directional focus command
+    if ($wm -match "(?ms)'activate'\s*\{[^}]*(?:Invoke-KomorebicAction|komorebic)\s+focus") {
+        throw "wm activate command must not trigger directional focus movement."
     }
 
     $diagnostic = Get-Content -LiteralPath $diagnosticPath -Raw
