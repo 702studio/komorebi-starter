@@ -67,6 +67,15 @@ namespace KomorebiStarter
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
         private static extern IntPtr GetWindowLongPtrW64(IntPtr hWnd, int nIndex);
 
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+        private static extern int SetWindowLongW32(IntPtr hWnd, int nIndex, int value);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+        private static extern IntPtr SetWindowLongPtrW64(IntPtr hWnd, int nIndex, IntPtr value);
+
+        [DllImport("kernel32.dll", EntryPoint = "SetLastError")]
+        private static extern void ClearLastError(uint errorCode);
+
         public static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
         {
             if (IntPtr.Size == 8)
@@ -77,6 +86,44 @@ namespace KomorebiStarter
             {
                 return new IntPtr(GetWindowLongW32(hWnd, nIndex));
             }
+        }
+
+        public static bool AddExtendedWindowStyle(
+            IntPtr hWnd,
+            long styleMask,
+            out long before,
+            out long after,
+            out int win32Error)
+        {
+            before = GetWindowLongPtr(hWnd, -20).ToInt64();
+            var desired = before | styleMask;
+            after = before;
+            win32Error = 0;
+
+            if (desired == before)
+            {
+                return true;
+            }
+
+            ClearLastError(0);
+            IntPtr previous;
+            if (IntPtr.Size == 8)
+            {
+                previous = SetWindowLongPtrW64(hWnd, -20, new IntPtr(desired));
+            }
+            else
+            {
+                previous = new IntPtr(SetWindowLongW32(hWnd, -20, unchecked((int)desired)));
+            }
+
+            win32Error = Marshal.GetLastWin32Error();
+            if (previous == IntPtr.Zero && win32Error != 0)
+            {
+                return false;
+            }
+
+            after = GetWindowLongPtr(hWnd, -20).ToInt64();
+            return (after & styleMask) == styleMask;
         }
 
         [DllImport("user32.dll")]

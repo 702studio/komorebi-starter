@@ -2472,14 +2472,14 @@ Invoke-TestCheck 'native-installer-and-winget-contract' {
     return 'Verified per-user installer identity, pinned compiler, dependency ownership, WinGet manifests, and release assets.'
 }
 
-# 37. Directional focus and Win32 foreground verification contracts
+# 37. Win32 foreground verification contracts
 Invoke-TestCheck 'foreground-focus-reliability-contract' {
     $whkd = Get-Content -LiteralPath (Join-Path $repoRoot 'config\whkdrc') -Raw
     foreach ($direction in @('left', 'right', 'up', 'down')) {
         $pattern = "(?m)^alt \+ $direction : .*wm\.ps1`" focus $direction\r?$"
         $bindingMatches = [regex]::Matches($whkd, $pattern)
-        if ($bindingMatches.Count -ne 1) {
-            throw "Expected exactly one Alt+$direction focus binding; found $($bindingMatches.Count)."
+        if ($bindingMatches.Count -ne 0) {
+            throw "Plain Alt+$direction must remain unbound so native Windows navigation keeps authority."
         }
     }
 
@@ -2528,6 +2528,11 @@ Invoke-TestCheck 'foreground-focus-reliability-contract' {
     # Static contract assertions for cancellation preservation and cursor stability.
     if ($interop -notmatch '(?s)cursorAfter\s*=\s*Get-CursorSnapshot.*?cursorMoved\s*=\s*Test-CursorSnapshotChanged.*?verified\s*=\s*\(') {
         throw "Focus interop contract violation: must perform final cursor verification before final matches computation."
+    }
+    foreach ($requiredPolicy in @('AddExtendedWindowStyle', 'SetWindowLongW', 'SetWindowLongPtrW', 'Protect-KomorebiBarFocus', 'Wait-KomorebiBarWindowPolicy', 'StableMilliseconds', '0x08000000')) {
+        if (($interop + $interopSource).IndexOf($requiredPolicy, [StringComparison]::Ordinal) -lt 0) {
+            throw "Focus interop bar policy is missing: $requiredPolicy"
+        }
     }
     if ($interop -notmatch '(?s)verified\s*=\s*\(\$foregroundMatches\s*-and\s*\$keyboardFocusMatches\s*-and\s*-not\s+\$cursorMoved\s*-and\s*\[string\]::IsNullOrEmpty\(\$reason\)\)') {
         throw "Focus interop contract violation: verified must require both authorities, cursor stability, and an empty cancellation reason."
@@ -2623,7 +2628,7 @@ Invoke-TestCheck 'foreground-focus-reliability-contract' {
     }
 
     $readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
-    foreach ($required in @('Alt + Left', 'wm.ps1" focus-health', 'Ctrl + Shift + I', 'Ctrl + Alt + Z')) {
+    foreach ($required in @('wm focus left', 'wm.ps1" focus-health', 'Ctrl + Shift + I', 'Ctrl + Alt + Z')) {
         if ($readme.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
             throw "README focus guidance is missing: $required"
         }
@@ -2634,7 +2639,7 @@ Invoke-TestCheck 'foreground-focus-reliability-contract' {
             throw "Focus QA matrix is missing: $required"
         }
     }
-    return 'Verified four-way bindings, bounded no-cursor activation, modal routing, read-only diagnostics, and Parsec guidance.'
+    return 'Verified native Alt+Arrow ownership, bounded no-cursor activation, modal routing, read-only diagnostics, and Parsec guidance.'
 }
 
 Invoke-TestCheck 'window-event-trace-contract-static' {
@@ -2723,7 +2728,8 @@ Invoke-TestCheck 'window-event-trace-contract-static' {
     $forbidden = @(
         'SendInput', 'AttachThreadInput', 'SetCursorPos', 'mouse_event', 'keybd_event',
         'komorebic\s+(?:start|stop|restart|reload|quick-start|config)',
-        'winget', 'choco', 'npm', 'pip', 'git\s+(?:clone|commit|push|pull|reset)'
+        '\bwinget(?:\.exe)?\b', '\bchoco(?:\.exe)?\b', '\bnpm(?:\.cmd|\.exe)?\b',
+        '\bpip(?:\.exe)?\b', 'git\s+(?:clone|commit|push|pull|reset)'
     )
     foreach ($pat in $forbidden) {
         if ($content -match $pat) {

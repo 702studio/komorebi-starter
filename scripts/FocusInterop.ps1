@@ -72,6 +72,101 @@ function Get-CursorSnapshot {
     }
 }
 
+function Protect-KomorebiBarFocus {
+    Initialize-FocusInterop
+    $results = New-Object System.Collections.Generic.List[object]
+
+    foreach ($process in @(Get-Process -Name komorebi-bar -ErrorAction SilentlyContinue)) {
+        $process.Refresh()
+        $window = [IntPtr]$process.MainWindowHandle
+        if ($window -eq [IntPtr]::Zero) {
+            $results.Add([pscustomobject]@{
+                processId = $process.Id
+                hwnd = 0
+                ok = $false
+                reason = 'main-window-not-ready'
+                beforeStyle = $null
+                afterStyle = $null
+                win32Error = 0
+            })
+            continue
+        }
+
+        [long]$before = 0
+        [long]$after = 0
+        [int]$win32Error = 0
+        $ok = [KomorebiStarter.NativeFocus]::AddExtendedWindowStyle(
+            $window,
+            0x08000000,
+            [ref]$before,
+            [ref]$after,
+            [ref]$win32Error)
+
+        $results.Add([pscustomobject]@{
+            processId = $process.Id
+            hwnd = ConvertFrom-WindowHandle -Value $window
+            ok = $ok
+            reason = if ($ok) { 'noactivate-applied' } else { 'set-window-style-failed' }
+            beforeStyle = ('0x{0:X8}' -f $before)
+            afterStyle = ('0x{0:X8}' -f $after)
+            win32Error = $win32Error
+        })
+    }
+
+    return $results.ToArray()
+}
+
+function Wait-KomorebiBarWindowPolicy {
+    param(
+        [ValidateRange(100, 10000)]
+        [int]$TimeoutMilliseconds = 4000,
+        [ValidateRange(100, 5000)]
+        [int]$StableMilliseconds = 1200,
+        [ValidateRange(10, 500)]
+        [int]$PollMilliseconds = 50
+    )
+
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $lastSignature = $null
+    $stableSince = 0L
+    $lastResults = @()
+
+    while ($timer.ElapsedMilliseconds -lt $TimeoutMilliseconds) {
+        $lastResults = @(Protect-KomorebiBarFocus)
+        $ready = ($lastResults.Count -gt 0 -and
+            @($lastResults | Where-Object { -not $_.ok -or $_.hwnd -eq 0 }).Count -eq 0)
+
+        if ($ready) {
+            $signature = (@($lastResults |
+                Sort-Object processId, hwnd |
+                ForEach-Object { "$($_.processId):$($_.hwnd)" }) -join ';')
+            if ($signature -ne $lastSignature) {
+                $lastSignature = $signature
+                $stableSince = $timer.ElapsedMilliseconds
+            } elseif (($timer.ElapsedMilliseconds - $stableSince) -ge $StableMilliseconds) {
+                $timer.Stop()
+                return [pscustomobject]@{
+                    stable = $true
+                    elapsedMilliseconds = $timer.ElapsedMilliseconds
+                    windows = $lastResults
+                }
+            }
+        } else {
+            $lastSignature = $null
+            $stableSince = $timer.ElapsedMilliseconds
+        }
+
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+
+    $timer.Stop()
+    return [pscustomobject]@{
+        stable = $false
+        elapsedMilliseconds = $timer.ElapsedMilliseconds
+        windows = $lastResults
+    }
+}
+
 function Test-CursorSnapshotChanged {
     param(
         [Parameter(Mandatory = $true)]$Before,

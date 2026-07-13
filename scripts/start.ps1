@@ -13,6 +13,12 @@ $ErrorActionPreference = 'Stop'
 # Dot-source common helper
 . (Join-Path $PSScriptRoot 'KomorebiStarter.Common.ps1')
 
+$focusInteropPath = Join-Path $PSScriptRoot 'FocusInterop.ps1'
+if (-not (Test-Path -LiteralPath $focusInteropPath -PathType Leaf)) {
+    throw "Focus interop helper was not found: $focusInteropPath"
+}
+. $focusInteropPath
+
 if ($DelayMilliseconds -gt 0) {
     Start-Sleep -Milliseconds $DelayMilliseconds
 }
@@ -178,7 +184,7 @@ try {
         $env:Path = $allEntries -join ';'
     }
 
-    $startArguments = @('start', '--config', $configPath, '--whkd', '--masir')
+    $startArguments = @('start', '--config', $configPath, '--whkd', '--masir', '--bar')
     if ($CleanState) {
         $startArguments += '--clean-state'
     }
@@ -196,8 +202,6 @@ try {
         throw 'komorebi.exe did not start within 8 seconds.'
     }
 
-    Start-Process -FilePath $bar -ArgumentList @('--config', ('"{0}"' -f $barConfig)) -WindowStyle Hidden | Out-Null
-
     $deadline = [DateTime]::UtcNow.AddSeconds(8)
     while ([DateTime]::UtcNow -lt $deadline) {
         $wmReady = Get-Process -Name komorebi -ErrorAction SilentlyContinue
@@ -208,6 +212,8 @@ try {
         }
         Start-Sleep -Milliseconds 100
     }
+
+    $barWindowPolicy = Wait-KomorebiBarWindowPolicy
 
     $missing = @()
     foreach ($name in @('komorebi', 'whkd', 'masir', 'komorebi-bar')) {
@@ -233,6 +239,7 @@ try {
         configHome = $configHome
         config = $configPath
         barConfig = $barConfig
+        barWindowPolicy = $barWindowPolicy
         processes = @(Get-Process -Name komorebi, komorebi-bar, whkd, masir -ErrorAction SilentlyContinue |
             Select-Object ProcessName, Id)
     } | ConvertTo-Json -Depth 5

@@ -158,9 +158,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Progr
 ## Shortcuts
 
 ### Focus
-| Action | Shortcut |
+| Action | Control |
 |---|---|
-| Focus left/right/up/down | `Alt + Left` / `Alt + Right` / `Alt + Up` / `Alt + Down` |
+| Focus left/right/up/down (CLI/agent) | `wm focus left/right/up/down` |
+| Native application navigation | `Alt + Left/Right/Up/Down` (unbound by this setup) |
 | Workspace cycle previous/next | `Alt + J` / `Alt + K` |
 | Workspace cycle previous/next (alt) | `Ctrl + Alt + Left` / `Ctrl + Alt + Right` |
 | Active workspace previous/next | `Alt + A` / `Alt + S` |
