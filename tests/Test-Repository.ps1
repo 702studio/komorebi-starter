@@ -2525,6 +2525,20 @@ Invoke-TestCheck 'foreground-focus-reliability-contract' {
         throw 'Focus repair must not inject input, move the cursor, reorder windows, or attach input queues.'
     }
 
+    # Static contract assertions for cancellation preservation and cursor stability.
+    if ($interop -notmatch '(?s)cursorAfter\s*=\s*Get-CursorSnapshot.*?cursorMoved\s*=\s*Test-CursorSnapshotChanged.*?verified\s*=\s*\(') {
+        throw "Focus interop contract violation: must perform final cursor verification before final matches computation."
+    }
+    if ($interop -notmatch '(?s)verified\s*=\s*\(\$foregroundMatches\s*-and\s*\$keyboardFocusMatches\s*-and\s*-not\s+\$cursorMoved\s*-and\s*\[string\]::IsNullOrEmpty\(\$reason\)\)') {
+        throw "Focus interop contract violation: verified must require both authorities, cursor stability, and an empty cancellation reason."
+    }
+    if ($interop -notmatch '(?s)if\s*\(\$verified\)\s*\{\s*\$reason\s*=\s*if\s*\(\$initialVerified\).*?\}\s*elseif\s*\(\[string\]::IsNullOrEmpty\(\$reason\)\)') {
+        throw "Focus interop contract violation: must preserve stable cancellation reasons and avoid overwriting them in final status report."
+    }
+    if ($interop -notmatch '(?s)if\s*\(\[KomorebiStarter\.NativeFocus\]::IsWindow\(\$popup\)\)\s*\{\s*\$popupRootOwner\s*=') {
+        throw "Focus interop contract violation: must verify IsWindow(popup) before retrieving owner or styling."
+    }
+
     $wm = Get-Content -LiteralPath $wmPath -Raw
     foreach ($required in @('Invoke-ForegroundActivation', "'focus-health'", 'Local\KomorebiStarter.Focus', 'komorebi-target-changed-after-activation', 'InvalidOperationException', 'Invoke-TargetActivationShared', "'activate'")) {
         if ($wm.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {

@@ -113,20 +113,23 @@ function Get-ActivationTarget {
         if ($popup -eq $managedRoot -or $popup -eq [IntPtr]::Zero) {
             $blockedReason = 'managed-root-disabled'
         } else {
-            $popupRootOwner = Get-RootOwnerWindowHandle -Window $popup
-            $popupExStyle = [KomorebiStarter.NativeFocus]::GetWindowLongPtr($popup, -20).ToInt64()
-            $popupNoActivate = (($popupExStyle -band 0x08000000) -ne 0)
-            $popupMinimized = [KomorebiStarter.NativeFocus]::IsIconic($popup)
+            if ([KomorebiStarter.NativeFocus]::IsWindow($popup)) {
+                $popupRootOwner = Get-RootOwnerWindowHandle -Window $popup
+                $popupExStyle = [KomorebiStarter.NativeFocus]::GetWindowLongPtr($popup, -20).ToInt64()
+                $popupNoActivate = (($popupExStyle -band 0x08000000) -ne 0)
+                $popupMinimized = [KomorebiStarter.NativeFocus]::IsIconic($popup)
 
-            $validPopup = ([KomorebiStarter.NativeFocus]::IsWindow($popup) -and
-                [KomorebiStarter.NativeFocus]::IsWindowVisible($popup) -and
-                [KomorebiStarter.NativeFocus]::IsWindowEnabled($popup) -and
-                -not $popupMinimized -and
-                -not $popupNoActivate -and
-                $popupRootOwner -eq $managedRootOwner)
-            if ($validPopup) {
-                $activationWindow = $popup
-                $modalRedirect = $true
+                $validPopup = ([KomorebiStarter.NativeFocus]::IsWindowVisible($popup) -and
+                    [KomorebiStarter.NativeFocus]::IsWindowEnabled($popup) -and
+                    -not $popupMinimized -and
+                    -not $popupNoActivate -and
+                    $popupRootOwner -eq $managedRootOwner)
+                if ($validPopup) {
+                    $activationWindow = $popup
+                    $modalRedirect = $true
+                } else {
+                    $blockedReason = 'modal-blocked-no-valid-popup'
+                }
             } else {
                 $blockedReason = 'modal-blocked-no-valid-popup'
             }
@@ -185,9 +188,18 @@ function Invoke-ForegroundActivation {
             $reason = 'mouse-moved'
             break
         }
-        if (-not [KomorebiStarter.NativeFocus]::IsWindow($target.activationWindow) -or
-            -not [KomorebiStarter.NativeFocus]::IsWindowVisible($target.activationWindow) -or
+        if (-not [KomorebiStarter.NativeFocus]::IsWindow($target.activationWindow)) {
+            $reason = 'activation-target-invalidated'
+            break
+        }
+        $targetExStyle = [KomorebiStarter.NativeFocus]::GetWindowLongPtr($target.activationWindow, -20).ToInt64()
+        $targetNoActivate = (($targetExStyle -band 0x08000000) -ne 0)
+        $targetMinimized = [KomorebiStarter.NativeFocus]::IsIconic($target.activationWindow)
+
+        if (-not [KomorebiStarter.NativeFocus]::IsWindowVisible($target.activationWindow) -or
             -not [KomorebiStarter.NativeFocus]::IsWindowEnabled($target.activationWindow) -or
+            $targetMinimized -or
+            $targetNoActivate -or
             [int][KomorebiStarter.NativeFocus]::GetWindowProcessId($target.activationWindow) -ne $targetProcessId) {
             $reason = 'activation-target-invalidated'
             break
@@ -238,6 +250,9 @@ function Invoke-ForegroundActivation {
     $stopwatch.Stop()
 
     # Final post-loop verify
+    $cursorAfter = Get-CursorSnapshot
+    $cursorMoved = Test-CursorSnapshotChanged -Before $cursorBefore -After $cursorAfter
+
     $foreground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
     $foregroundRoot = Get-RootWindowHandle -Window $foreground
     $keyboardFocus = [KomorebiStarter.NativeFocus]::GetKeyboardFocusWindow()
@@ -245,18 +260,24 @@ function Invoke-ForegroundActivation {
 
     $foregroundMatches = ($foregroundRoot -eq $target.expectedRoot)
     $keyboardFocusMatches = ($keyboardFocus -eq [IntPtr]::Zero -or $keyboardFocusRoot -eq $target.expectedRoot)
-    $verified = ($foregroundMatches -and $keyboardFocusMatches)
+
+    if ($cursorMoved -and [string]::IsNullOrEmpty($reason)) {
+        $reason = 'mouse-moved'
+    }
+
+    $verified = ($foregroundMatches -and
+        $keyboardFocusMatches -and
+        -not $cursorMoved -and
+        [string]::IsNullOrEmpty($reason))
 
     if ($verified) {
         $reason = if ($initialVerified) { 'already-foreground' } else { 'repaired' }
     } elseif ([string]::IsNullOrEmpty($reason)) {
-        $reason = if ($stopwatch.ElapsedMilliseconds -ge $DeadlineMilliseconds) { 'deadline-exceeded' } else { 'foreground-denied' }
-    }
-
-    $cursorAfter = Get-CursorSnapshot
-    $cursorMoved = Test-CursorSnapshotChanged -Before $cursorBefore -After $cursorAfter
-    if (-not $verified -and $cursorMoved -and $reason -ne 'mouse-moved') {
-        $reason = 'mouse-moved'
+        $reason = if ($stopwatch.ElapsedMilliseconds -ge $DeadlineMilliseconds) {
+            'deadline-exceeded'
+        } else {
+            'foreground-denied'
+        }
     }
 
     [pscustomobject]@{
