@@ -65,7 +65,9 @@
     "configuration": "%USERPROFILE%\\.config\\komorebi",
     "state": "%LOCALAPPDATA%\\KomorebiStarter",
     "installManifest": "%LOCALAPPDATA%\\KomorebiStarter\\install-manifest.json",
-    "agentManifest": "%LOCALAPPDATA%\\Programs\\KomorebiStarter\\agent-manifest.json"
+    "agentManifest": "%LOCALAPPDATA%\\Programs\\KomorebiStarter\\agent-manifest.json",
+    "focusDiagnostics": "%LOCALAPPDATA%\\Programs\\KomorebiStarter\\focus-diagnostics.ps1",
+    "focusInteropAssembly": "%LOCALAPPDATA%\\Programs\\KomorebiStarter\\FocusInterop.dll"
   },
   "commands": {
     "diagnose": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\\Programs\\KomorebiStarter\\doctor.ps1\" -Json",
@@ -73,6 +75,7 @@
     "globalState": "wm global-state",
     "visibleWindows": "wm visible",
     "status": "wm status",
+    "focusHealth": "wm focus-health",
     "help": "wm help",
     "mutations": [
       "focus",
@@ -121,6 +124,7 @@
       "Capture wm state.",
       "Run one wm mutation.",
       "Capture wm state again and verify the expected change.",
+      "Run wm focus-health after focus failures to compare Komorebi, foreground, keyboard-focus, and mouse-under roots.",
       "Use bounded polling for reload and restart.",
       "Run doctor.ps1 -Json when verification fails."
     ]

@@ -6,9 +6,7 @@
 # non-interactive and provides the behaviours that komorebic does not expose
 # directly (percentage resize, active-workspace cycling and safe reloads).
 
-# Focus windows and workspaces.
-alt + up : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus up
-alt + down : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" focus down
+# Workspace navigation. Plain Alt+Arrow remains native to Windows/File Explorer.
 alt + j : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace-cycle previous
 alt + k : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace-cycle next
 ctrl + alt + left : & "$env:LOCALAPPDATA\Programs\KomorebiStarter\wm.ps1" workspace-cycle previous

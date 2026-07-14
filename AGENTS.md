@@ -78,7 +78,8 @@ The CLI wrapper (`wm.cmd` -> `wm.ps1`) manages execution. It guarantees non-inte
 - `wm global-state`: Returns the global state JSON.
 - `wm visible`: Returns the visible windows JSON.
 - `wm query <state-query>`: Returns raw upstream query output.
-- `wm focus <left|right|up|down>`
+- `wm focus <left|right|up|down>`: Verifies the actual Win32 foreground root and returns nonzero if bounded activation repair fails.
+- `wm focus-health`: Read-only comparison of Komorebi focus, foreground root, keyboard-focus child, mouse-under root, and modal activation target.
 - `wm move <left|right|up|down>`
 - `wm workspace <name>`
 - `wm send <workspace-name>`
@@ -131,5 +132,9 @@ Agents must follow a structured preflight, execution, and verification flow:
 4. **Bounded Verification**:
    - For synchronous mutations, query and compare state again with `wm state`.
    - For asynchronous mutations (such as `wm reload` or `wm restart`), agents must poll `wm state` with bounded retries to verify completion.
-5. **Diagnostics on Failure**: If verification fails or throws, run `doctor.ps1 -Json` to diagnose the error state.
+5. **Diagnostics on Failure**: If focus verification fails, run `wm focus-health`; for lifecycle or configuration failures, run `doctor.ps1 -Json`.
 6. **Recovery/Rollback**: Invoke recovery or rollback scripts (`restore.ps1` or `uninstall.ps1`) only if a validated installation manifest exists, preventing corruption of pre-existing user configurations.
+
+### Parsec Boundary
+
+Parsec keyboard immersive mode can capture `Alt` shortcuts before `whkd` sees them. Agents must not interpret a missing local shortcut event as a Komorebi focus failure. Ask the user to toggle Parsec immersive mode (default `Ctrl + Shift + I`) or detach Parsec input (default `Ctrl + Alt + Z`), then rerun `wm focus-health`. Do not automate Parsec input detachment because it changes control of the remote session.

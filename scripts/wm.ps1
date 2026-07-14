@@ -10,6 +10,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$focusInteropPath = Join-Path $PSScriptRoot 'FocusInterop.ps1'
+if (-not (Test-Path -LiteralPath $focusInteropPath -PathType Leaf)) {
+    throw "Focus interop helper was not found: $focusInteropPath"
+}
+. $focusInteropPath
+
 function Resolve-CommandPath {
     param([string]$CommandName)
     $cmd = Get-Command $CommandName -ErrorAction SilentlyContinue
@@ -50,6 +56,7 @@ $script:ConfigHome = if ($env:KOMOREBI_CONFIG_HOME) {
 $script:ConfigPath = Join-Path $script:ConfigHome 'komorebi.json'
 $script:RuntimeRoot = Join-Path $env:LOCALAPPDATA 'KomorebiStarter\agent'
 $script:StartScript = Join-Path $PSScriptRoot 'start.ps1'
+$script:FocusDiagnosticsScript = Join-Path $PSScriptRoot 'focus-diagnostics.ps1'
 $script:DefaultResizeDelta = 50
 
 function Assert-ArgumentCount {
@@ -292,6 +299,141 @@ function Invoke-LayoutCommand {
     Invoke-KomorebicAction -Arguments @('change-layout', $normalized)
 }
 
+function Invoke-TargetActivationShared {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommandName,
+        [string]$Direction = $null
+    )
+
+    $focusMutex = [Threading.Mutex]::new($false, 'Local\KomorebiStarter.Focus')
+    $focusLockTaken = $false
+    try {
+        try {
+            $focusLockTaken = $focusMutex.WaitOne(750)
+        } catch [Threading.AbandonedMutexException] {
+            $focusLockTaken = $true
+        }
+        if (-not $focusLockTaken) {
+            throw 'Another directional focus operation is still in progress.'
+        }
+
+        Initialize-FocusInterop
+        $postCommandForeground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
+        $postCommandForegroundRoot = Get-RootWindowHandle -Window $postCommandForeground
+        $focusedWindow = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
+        if ($null -eq $focusedWindow -or $null -eq $focusedWindow.PSObject.Properties['hwnd']) {
+            throw 'Komorebi did not report a focused managed window.'
+        }
+
+        $focusedHwnd = [long]$focusedWindow.hwnd
+        $activation = Invoke-ForegroundActivation -WindowHandle $focusedHwnd `
+            -PreviousForegroundRootHwnd (ConvertFrom-WindowHandle -Value $postCommandForegroundRoot)
+        if ($activation.attempts -gt 0) {
+            $verifiedTarget = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
+            if ($null -eq $verifiedTarget -or
+                $null -eq $verifiedTarget.PSObject.Properties['hwnd'] -or
+                [long]$verifiedTarget.hwnd -ne $focusedHwnd) {
+                $activation.ok = $false
+                $activation.reason = 'komorebi-target-changed-after-activation'
+            }
+        }
+
+        $resultObj = [ordered]@{
+            ok = $activation.ok
+            command = $CommandName
+        }
+        if ($null -ne $Direction) {
+            $resultObj['direction'] = $Direction
+        }
+        $resultObj['targetHwnd'] = $focusedHwnd
+        $resultObj['activation'] = $activation
+        $resultObj['timestamp'] = (Get-Date).ToString('o')
+
+        $result = [pscustomobject]$resultObj
+        $resultJson = $result | ConvertTo-Json -Depth 6 -Compress
+    } finally {
+        if ($focusLockTaken) {
+            $focusMutex.ReleaseMutex()
+        }
+        $focusMutex.Dispose()
+    }
+    if (-not $activation.ok) {
+        throw [InvalidOperationException]::new($resultJson)
+    }
+    return $resultJson
+}
+
+function Invoke-ConfigurationReplacement {
+    $cursorBefore = Get-CursorSnapshot
+    $focusedBefore = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
+    $targetHwnd = if ($null -ne $focusedBefore -and
+        $null -ne $focusedBefore.PSObject.Properties['hwnd']) {
+        [long]$focusedBefore.hwnd
+    } else {
+        0L
+    }
+    $barPidsBefore = @(Get-Process -Name komorebi-bar -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.Id })
+
+    Invoke-KomorebicAction -Arguments @('replace-configuration', $script:ConfigPath)
+
+    $barPidsAfter = @()
+    $deadline = [DateTime]::UtcNow.AddSeconds(3)
+    do {
+        $barPidsAfter = @(Get-Process -Name komorebi-bar -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.Id })
+        if (@($barPidsAfter | Where-Object { $_ -notin $barPidsBefore }).Count -gt 0) {
+            break
+        }
+        Start-Sleep -Milliseconds 50
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    $barWindowPolicy = Wait-KomorebiBarWindowPolicy
+    $cursorAfter = Get-CursorSnapshot
+    $cursorMoved = Test-CursorSnapshotChanged -Before $cursorBefore -After $cursorAfter
+    $focusResult = [ordered]@{
+        attempted = $false
+        ok = $true
+        reason = 'no-focused-target'
+        activation = $null
+    }
+
+    if ($targetHwnd -ne 0) {
+        $focusedAfter = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
+        if ($null -eq $focusedAfter -or
+            $null -eq $focusedAfter.PSObject.Properties['hwnd'] -or
+            [long]$focusedAfter.hwnd -ne $targetHwnd) {
+            $focusResult.ok = $false
+            $focusResult.reason = 'komorebi-target-changed-during-reload'
+        } elseif ($cursorMoved) {
+            $focusResult.reason = 'user-input-detected'
+        } else {
+            $currentForeground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
+            $currentForegroundRoot = Get-RootWindowHandle -Window $currentForeground
+            $activation = Invoke-ForegroundActivation -WindowHandle $targetHwnd `
+                -PreviousForegroundRootHwnd (ConvertFrom-WindowHandle -Value $currentForegroundRoot)
+            $focusResult.attempted = $true
+            $focusResult.ok = $activation.ok
+            $focusResult.reason = $activation.reason
+            $focusResult.activation = $activation
+        }
+    }
+
+    [pscustomobject]@{
+        ok = $focusResult.ok
+        command = 'reload'
+        config = $script:ConfigPath
+        barRestartObserved = (@($barPidsAfter | Where-Object { $_ -notin $barPidsBefore }).Count -gt 0)
+        barPidsBefore = $barPidsBefore
+        barPidsAfter = $barPidsAfter
+        barWindowPolicy = $barWindowPolicy
+        cursorMoved = $cursorMoved
+        focus = [pscustomobject]$focusResult
+        timestamp = (Get-Date).ToString('o')
+    } | ConvertTo-Json -Depth 8 -Compress
+}
+
 function Start-DetachedScript {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -481,10 +623,25 @@ switch ($normalizedCommand) {
         Assert-ArgumentCount -Minimum 1 -Usage 'query <state-query>'
         (Invoke-KomorebicRaw -Arguments @('query', $ArgumentList[0])).Output
     }
+    'activate' {
+        Invoke-TargetActivationShared -CommandName 'activate'
+    }
     'focus' {
         Assert-ArgumentCount -Minimum 1 -Usage 'focus <left|right|up|down>'
-        Invoke-KomorebicAction -Arguments @('focus', $ArgumentList[0])
-        Write-ActionResult -Name $normalizedCommand
+        $direction = $ArgumentList[0].ToLowerInvariant()
+        if ($direction -notin @('left', 'right', 'up', 'down')) {
+            throw "Invalid focus direction '$direction'."
+        }
+
+        # Keep key-repeat responsive; the mutex serializes only verification/repair.
+        Invoke-KomorebicAction -Arguments @('focus', $direction)
+        Invoke-TargetActivationShared -CommandName 'focus' -Direction $direction
+    }
+    'focus-health' {
+        if (-not (Test-Path -LiteralPath $script:FocusDiagnosticsScript -PathType Leaf)) {
+            throw "Focus diagnostic script was not found: $script:FocusDiagnosticsScript"
+        }
+        & $script:FocusDiagnosticsScript -Json
     }
     'move' {
         Assert-ArgumentCount -Minimum 1 -Usage 'move <left|right|up|down>'
@@ -654,9 +811,7 @@ switch ($normalizedCommand) {
         if (-not (Test-Path -LiteralPath $script:ConfigPath)) {
             throw "Komorebi configuration not found: $script:ConfigPath"
         }
-        Invoke-KomorebicAction -Arguments @('replace-configuration', $script:ConfigPath)
-        Start-DetachedScript -Path $script:StartScript -Arguments @('-Restart', '-DelayMilliseconds', '300')
-        Write-ActionResult -Name $normalizedCommand
+        Invoke-ConfigurationReplacement
     }
     'restart' {
         Start-DetachedScript -Path $script:StartScript -Arguments @('-Restart', '-DelayMilliseconds', '300')
@@ -686,6 +841,8 @@ wm global-state
 wm visible
 wm query <state-query>
 wm focus <left|right|up|down>
+wm activate
+wm focus-health
 wm move <left|right|up|down>
 wm workspace <name>
 wm send <name>

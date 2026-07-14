@@ -180,6 +180,10 @@ $targetFiles = @(
     (Join-Path $configHome 'komorebi.bar.json'),
     (Join-Path $configHome 'komorebi.bar.jetbrains.json'),
     (Join-Path $configHome 'whkdrc'),
+    (Join-Path $installDir 'FocusInterop.cs'),
+    (Join-Path $installDir 'FocusInterop.dll'),
+    (Join-Path $installDir 'FocusInterop.ps1'),
+    (Join-Path $installDir 'focus-diagnostics.ps1'),
     (Join-Path $installDir 'wm.ps1'),
     (Join-Path $installDir 'wm.cmd'),
     (Join-Path $installDir 'wm-resize-mode.ps1'),
@@ -233,6 +237,7 @@ $backupRoot = $null
 $backupCommitted = $false
 $startupResult = $null
 $doctorResult = $null
+$manifestTempFile = $null
 
 try {
     # [2] Ensuring winget dependencies
@@ -329,6 +334,16 @@ try {
         [IO.File]::WriteAllText($tempApplicationsJson, $mergedJson, [Text.UTF8Encoding]::new($false))
     }
 
+    $focusInteropAssembly = Join-Path $tempFetchRoot 'FocusInterop.dll'
+    if (-not $IsPlanMode) {
+        $focusInteropSource = Join-Path $sourceScripts 'FocusInterop.cs'
+        $null = Add-Type -Path $focusInteropSource -OutputAssembly $focusInteropAssembly -OutputType Library
+        if (-not (Test-Path -LiteralPath $focusInteropAssembly -PathType Leaf) -or
+            (Get-Item -LiteralPath $focusInteropAssembly).Length -le 0) {
+            throw 'Failed to compile the local FocusInterop.dll runtime assembly.'
+        }
+    }
+
     # [4] Calculate every desired installed hash
     $installActions = @(
         @{ name = 'komorebi.json'; source = (Join-Path $sourceConfig 'komorebi.json'); dest = (Join-Path $configHome 'komorebi.json'); type = 'config' },
@@ -338,6 +353,10 @@ try {
         @{ name = 'whkdrc'; source = (Join-Path $sourceConfig 'whkdrc'); dest = (Join-Path $configHome 'whkdrc'); type = 'config' },
         @{ name = 'applications.json'; source = $tempApplicationsJson; dest = (Join-Path $configHome 'applications.json'); type = 'config' },
 
+        @{ name = 'FocusInterop.cs'; source = (Join-Path $sourceScripts 'FocusInterop.cs'); dest = (Join-Path $installDir 'FocusInterop.cs'); type = 'program' },
+        @{ name = 'FocusInterop.dll'; source = $focusInteropAssembly; dest = (Join-Path $installDir 'FocusInterop.dll'); type = 'program' },
+        @{ name = 'FocusInterop.ps1'; source = (Join-Path $sourceScripts 'FocusInterop.ps1'); dest = (Join-Path $installDir 'FocusInterop.ps1'); type = 'program' },
+        @{ name = 'focus-diagnostics.ps1'; source = (Join-Path $sourceScripts 'focus-diagnostics.ps1'); dest = (Join-Path $installDir 'focus-diagnostics.ps1'); type = 'program' },
         @{ name = 'wm.ps1'; source = (Join-Path $sourceScripts 'wm.ps1'); dest = (Join-Path $installDir 'wm.ps1'); type = 'program' },
         @{ name = 'wm.cmd'; source = (Join-Path $sourceScripts 'wm.cmd'); dest = (Join-Path $installDir 'wm.cmd'); type = 'program' },
         @{ name = 'wm-resize-mode.ps1'; source = (Join-Path $sourceScripts 'wm-resize-mode.ps1'); dest = (Join-Path $installDir 'wm-resize-mode.ps1'); type = 'program' },
@@ -351,7 +370,7 @@ try {
     )
 
     foreach ($act in $installActions) {
-        if ($act.name -eq 'applications.json' -and $IsPlanMode) {
+        if ($act.name -in @('applications.json', 'FocusInterop.dll') -and $IsPlanMode) {
             $act.sha256 = '0000000000000000000000000000000000000000000000000000000000000000'
         } else {
             $act.sha256 = Get-FileSHA256 $act.source
@@ -360,7 +379,7 @@ try {
 
     # Verify source existence and desired SHA256 format before backup/mutations
     foreach ($act in $installActions) {
-        $skipSrcCheck = ($act.name -eq 'applications.json' -and $IsPlanMode)
+        $skipSrcCheck = ($act.name -in @('applications.json', 'FocusInterop.dll') -and $IsPlanMode)
         if (-not $skipSrcCheck) {
             if (-not (Test-Path -LiteralPath $act.source -PathType Leaf)) {
                 throw "Install source file does not exist: $($act.source)"
@@ -627,7 +646,20 @@ try {
     } else {
         $startScriptFile = Join-Path $installDir 'start.ps1'
         if (Test-Path -LiteralPath $startScriptFile) {
-            $startupText = (& $startScriptFile -Restart -CleanState 2>&1 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+            $startupArguments = @(
+                '-NoProfile',
+                '-NonInteractive',
+                '-ExecutionPolicy', 'Bypass',
+                '-File', $startScriptFile,
+                '-Restart',
+                '-CleanState'
+            )
+            $startupOutput = @(& powershell.exe @startupArguments 2>&1)
+            $startupExitCode = $LASTEXITCODE
+            $startupText = ($startupOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+            if ($startupExitCode -ne 0) {
+                throw "Startup script exited with code ${startupExitCode}: $startupText"
+            }
             try {
                 $startupResult = $startupText | ConvertFrom-Json
             } catch {
@@ -649,14 +681,19 @@ try {
     } else {
         $doctorScriptFile = Join-Path $installDir 'doctor.ps1'
         if (Test-Path -LiteralPath $doctorScriptFile) {
-            $doctorText = (& $doctorScriptFile -Json -NoExitCode 2>&1 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+            $doctorText = (& $doctorScriptFile -Json -NoExitCode -PendingInstallManifest 2>&1 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
             try {
                 $doctorResult = $doctorText | ConvertFrom-Json
             } catch {
                 throw "Doctor did not output valid JSON: $doctorText"
             }
             if ($null -eq $doctorResult -or $doctorResult.ok -ne $true) {
-                throw "Doctor failed with unhealthy status."
+                $issueSummary = if ($null -ne $doctorResult -and $null -ne $doctorResult.issueCodes) {
+                    @($doctorResult.issueCodes) -join ', '
+                } else {
+                    'unknown issue'
+                }
+                throw "Doctor failed with unhealthy status: $issueSummary"
             }
         }
     }
@@ -690,7 +727,7 @@ try {
         $glazeBackupManifestSHA256 = $backupManifestSHA256
     }
 
-    # [12] Write install-manifest.json last
+    # [12] Validate and atomically commit install-manifest.json last
     $manifestObj = [ordered]@{
         productId = $productId
         schemaVersion = $schemaVersion
@@ -716,7 +753,25 @@ try {
             action = "Write install-manifest.json"
         })
     } else {
-        $manifestObj | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestFile -Encoding UTF8
+        $manifestJson = $manifestObj | ConvertTo-Json -Depth 6
+        $manifestCandidate = $manifestJson | ConvertFrom-Json
+        Assert-InstallManifestValid -ManifestObj $manifestCandidate -ExpectedProductId $productId -ExpectedSchemaVersion $schemaVersion -ExpectedInstallDir $installDir -ExpectedConfigHome $configHome -VerifyBackupLinkage
+
+        $manifestTempFile = Join-Path $stateHome ("install-manifest.{0}.tmp" -f [Guid]::NewGuid().ToString('N'))
+        [IO.File]::WriteAllText($manifestTempFile, $manifestJson, [Text.UTF8Encoding]::new($false))
+        $persistedCandidate = Get-Content -LiteralPath $manifestTempFile -Raw | ConvertFrom-Json
+        Assert-InstallManifestValid -ManifestObj $persistedCandidate -ExpectedProductId $productId -ExpectedSchemaVersion $schemaVersion -ExpectedInstallDir $installDir -ExpectedConfigHome $configHome -VerifyBackupLinkage
+
+        $doctorResult.manifest.valid = $true
+        $doctorResult.manifest.error = $null
+        $doctorResult.manifest.pending = $false
+
+        if (Test-Path -LiteralPath $manifestFile -PathType Leaf) {
+            [IO.File]::Replace($manifestTempFile, $manifestFile, $null)
+        } else {
+            [IO.File]::Move($manifestTempFile, $manifestFile)
+        }
+        $manifestTempFile = $null
     }
 
 } catch {
@@ -732,6 +787,9 @@ try {
     }
     throw $originalException
 } finally {
+    if (-not [string]::IsNullOrWhiteSpace($manifestTempFile) -and (Test-Path -LiteralPath $manifestTempFile)) {
+        Remove-Item -LiteralPath $manifestTempFile -Force -ErrorAction SilentlyContinue
+    }
     if (-not $IsPlanMode -and $null -ne $tempFetchRoot -and (Test-Path -LiteralPath $tempFetchRoot)) {
         $canonicalTempRoot = Get-CanonicalPath $tempFetchRoot
         $canonicalTempEnv = Get-CanonicalPath $env:TEMP
