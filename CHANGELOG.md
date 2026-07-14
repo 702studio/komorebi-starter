@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-14
+
 ### Added
 - Read-only focus diagnostics for comparing Komorebi state with Win32 foreground, keyboard-focus, and mouse-under roots.
 - A locally compiled, manifest-owned Win32 interop assembly keeps dynamic C# compilation out of the installed focus path.
