@@ -7,11 +7,17 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Read-only focus diagnostics for comparing Komorebi state with Win32 foreground, keyboard-focus, and mouse-under roots.
 - A locally compiled, manifest-owned Win32 interop assembly keeps dynamic C# compilation out of the installed focus path.
+- Portable window rules for Chromium transients, Office and PowerToys helpers, core desktop applications, Parsec, and Cinema 4D dialogs.
 
 ### Fixed
-- `Alt+Left/Right/Up/Down` now provides complete directional focus coverage.
 - Directional focus verifies the real Windows foreground root, repairs bounded activation mismatches without moving the cursor, and redirects disabled modal owners to their active popup.
 - Upgrades accept the exact v0.2.0 schema-1 file profile while still rejecting partial or forged manifests.
+- The short human bootstrap binds installer parameters correctly instead of passing named values positionally.
+- Installation verifies runtime health before atomically committing its manifest and can roll back without a loaded interop assembly locking files.
+- `komorebi-bar` starts with the selected configuration, durable file-backed logs, and no transient console or parent-pipe lifetime dependency.
+
+### Changed
+- Plain `Alt+Arrow` remains available to Windows and File Explorer; directional focus stays available through the agent-friendly `wm focus <direction>` command.
 
 ## [0.2.0] - 2026-07-13
 

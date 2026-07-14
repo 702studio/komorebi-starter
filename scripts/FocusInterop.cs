@@ -4,6 +4,271 @@ using System.Text;
 
 namespace KomorebiStarter
 {
+    public static class NativeProcess
+    {
+        private const uint GenericRead = 0x80000000;
+        private const uint FileAppendData = 0x00000004;
+        private const uint FileShareRead = 0x00000001;
+        private const uint FileShareWrite = 0x00000002;
+        private const uint OpenAlways = 4;
+        private const uint OpenExisting = 3;
+        private const uint FileAttributeNormal = 0x00000080;
+        private const uint StartfUseStdHandles = 0x00000100;
+        private const uint CreateNoWindow = 0x08000000;
+        private const uint ExtendedStartupInfoPresent = 0x00080000;
+        private const int ProcThreadAttributeHandleList = 0x00020002;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SecurityAttributes
+        {
+            public int Length;
+            public IntPtr SecurityDescriptor;
+
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool InheritHandle;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct StartupInfo
+        {
+            public int Size;
+            public string Reserved;
+            public string Desktop;
+            public string Title;
+            public int X;
+            public int Y;
+            public int XSize;
+            public int YSize;
+            public int XCountChars;
+            public int YCountChars;
+            public int FillAttribute;
+            public int Flags;
+            public short ShowWindow;
+            public short Reserved2Size;
+            public IntPtr Reserved2;
+            public IntPtr StandardInput;
+            public IntPtr StandardOutput;
+            public IntPtr StandardError;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ProcessInformation
+        {
+            public IntPtr Process;
+            public IntPtr Thread;
+            public int ProcessId;
+            public int ThreadId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct StartupInfoEx
+        {
+            public StartupInfo StartupInfo;
+            public IntPtr AttributeList;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateFileW(
+            string fileName,
+            uint desiredAccess,
+            uint shareMode,
+            ref SecurityAttributes securityAttributes,
+            uint creationDisposition,
+            uint flagsAndAttributes,
+            IntPtr templateFile);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CreateProcessW(
+            string applicationName,
+            StringBuilder commandLine,
+            IntPtr processAttributes,
+            IntPtr threadAttributes,
+            [MarshalAs(UnmanagedType.Bool)] bool inheritHandles,
+            uint creationFlags,
+            IntPtr environment,
+            string currentDirectory,
+            ref StartupInfoEx startupInfo,
+            out ProcessInformation processInformation);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool InitializeProcThreadAttributeList(
+            IntPtr attributeList,
+            int attributeCount,
+            int flags,
+            ref IntPtr size);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UpdateProcThreadAttribute(
+            IntPtr attributeList,
+            uint flags,
+            IntPtr attribute,
+            IntPtr value,
+            IntPtr size,
+            IntPtr previousValue,
+            IntPtr returnSize);
+
+        [DllImport("kernel32.dll")]
+        private static extern void DeleteProcThreadAttributeList(IntPtr attributeList);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        public static int StartDetached(
+            string applicationPath,
+            string arguments,
+            string workingDirectory,
+            string standardOutputPath,
+            string standardErrorPath)
+        {
+            var inheritable = new SecurityAttributes
+            {
+                Length = Marshal.SizeOf(typeof(SecurityAttributes)),
+                SecurityDescriptor = IntPtr.Zero,
+                InheritHandle = true
+            };
+
+            var standardInput = CreateFileW(
+                "NUL",
+                GenericRead,
+                FileShareRead | FileShareWrite,
+                ref inheritable,
+                OpenExisting,
+                FileAttributeNormal,
+                IntPtr.Zero);
+            var standardOutput = CreateFileW(
+                standardOutputPath,
+                FileAppendData,
+                FileShareRead | FileShareWrite,
+                ref inheritable,
+                OpenAlways,
+                FileAttributeNormal,
+                IntPtr.Zero);
+            var standardError = CreateFileW(
+                standardErrorPath,
+                FileAppendData,
+                FileShareRead | FileShareWrite,
+                ref inheritable,
+                OpenAlways,
+                FileAttributeNormal,
+                IntPtr.Zero);
+
+            var invalidHandle = new IntPtr(-1);
+            if (standardInput == invalidHandle || standardOutput == invalidHandle || standardError == invalidHandle)
+            {
+                var error = Marshal.GetLastWin32Error();
+                CloseIfValid(standardInput, invalidHandle);
+                CloseIfValid(standardOutput, invalidHandle);
+                CloseIfValid(standardError, invalidHandle);
+                throw new InvalidOperationException("Unable to open detached process streams. Win32 error: " + error);
+            }
+
+            try
+            {
+                var attributeListSize = IntPtr.Zero;
+                InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attributeListSize);
+                var attributeList = Marshal.AllocHGlobal(attributeListSize);
+                var inheritedHandles = Marshal.AllocHGlobal(IntPtr.Size * 3);
+                var attributeListInitialized = false;
+
+                try
+                {
+                    if (!InitializeProcThreadAttributeList(attributeList, 1, 0, ref attributeListSize))
+                    {
+                        throw new InvalidOperationException(
+                            "Unable to initialize the detached process handle list. Win32 error: " + Marshal.GetLastWin32Error());
+                    }
+                    attributeListInitialized = true;
+
+                    Marshal.WriteIntPtr(inheritedHandles, 0, standardInput);
+                    Marshal.WriteIntPtr(inheritedHandles, IntPtr.Size, standardOutput);
+                    Marshal.WriteIntPtr(inheritedHandles, IntPtr.Size * 2, standardError);
+                    if (!UpdateProcThreadAttribute(
+                        attributeList,
+                        0,
+                        new IntPtr(ProcThreadAttributeHandleList),
+                        inheritedHandles,
+                        new IntPtr(IntPtr.Size * 3),
+                        IntPtr.Zero,
+                        IntPtr.Zero))
+                    {
+                        throw new InvalidOperationException(
+                            "Unable to restrict detached process handle inheritance. Win32 error: " + Marshal.GetLastWin32Error());
+                    }
+
+                    var startupInfo = new StartupInfoEx
+                    {
+                        StartupInfo = new StartupInfo
+                        {
+                            Size = Marshal.SizeOf(typeof(StartupInfoEx)),
+                            Flags = (int)StartfUseStdHandles,
+                            StandardInput = standardInput,
+                            StandardOutput = standardOutput,
+                            StandardError = standardError
+                        },
+                        AttributeList = attributeList
+                    };
+                    var commandLine = new StringBuilder(
+                        "\"" + applicationPath + "\"" +
+                        (string.IsNullOrWhiteSpace(arguments) ? string.Empty : " " + arguments));
+
+                    ProcessInformation processInformation;
+                    if (!CreateProcessW(
+                        applicationPath,
+                        commandLine,
+                        IntPtr.Zero,
+                        IntPtr.Zero,
+                        true,
+                        CreateNoWindow | ExtendedStartupInfoPresent,
+                        IntPtr.Zero,
+                        workingDirectory,
+                        ref startupInfo,
+                        out processInformation))
+                    {
+                        throw new InvalidOperationException(
+                            "Unable to start detached process. Win32 error: " + Marshal.GetLastWin32Error());
+                    }
+
+                    try
+                    {
+                        return processInformation.ProcessId;
+                    }
+                    finally
+                    {
+                        CloseHandle(processInformation.Thread);
+                        CloseHandle(processInformation.Process);
+                    }
+                }
+                finally
+                {
+                    if (attributeListInitialized)
+                    {
+                        DeleteProcThreadAttributeList(attributeList);
+                    }
+                    Marshal.FreeHGlobal(inheritedHandles);
+                    Marshal.FreeHGlobal(attributeList);
+                }
+            }
+            finally
+            {
+                CloseHandle(standardInput);
+                CloseHandle(standardOutput);
+                CloseHandle(standardError);
+            }
+        }
+
+        private static void CloseIfValid(IntPtr handle, IntPtr invalidHandle)
+        {
+            if (handle != IntPtr.Zero && handle != invalidHandle)
+            {
+                CloseHandle(handle);
+            }
+        }
+    }
+
     public static class NativeFocus
     {
         [StructLayout(LayoutKind.Sequential)]

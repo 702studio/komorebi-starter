@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$Json,
-    [switch]$NoExitCode
+    [switch]$NoExitCode,
+    [switch]$PendingInstallManifest
 )
 
 Set-StrictMode -Version Latest
@@ -54,7 +55,9 @@ $manifestFile = Join-Path $stateHome 'install-manifest.json'
 $manifestValid = $false
 $manifestError = $null
 $migrateFromGlazeWM = $false
-if (Test-Path -LiteralPath $manifestFile -PathType Leaf) {
+if ($PendingInstallManifest) {
+    $manifestError = 'Install manifest is pending the final transaction commit.'
+} elseif (Test-Path -LiteralPath $manifestFile -PathType Leaf) {
     try {
         $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
         Assert-InstallManifestValid -ManifestObj $manifest -ExpectedProductId $productId -ExpectedSchemaVersion $schemaVersion -ExpectedInstallDir $installDir -ExpectedConfigHome $configHome -VerifyBackupLinkage
@@ -114,7 +117,7 @@ if (-not $processChecks.'komorebi-bar') { $null = $issueCodes.Add("PROCESS_BAR_S
 if (-not $taskOk) { $null = $issueCodes.Add("TASK_DISABLED_OR_MISSING") }
 
 if ($conflictDetected) { $null = $issueCodes.Add("GLAZE_CONFLICT") }
-if (-not $manifestValid) { $null = $issueCodes.Add("MANIFEST_INVALID") }
+if (-not $PendingInstallManifest -and -not $manifestValid) { $null = $issueCodes.Add("MANIFEST_INVALID") }
 
 # Deduplicate issueCodes while preserving order
 $uniqueCodes = New-Object System.Collections.ArrayList
@@ -150,6 +153,7 @@ $report = [pscustomobject]@{
     manifest = [ordered]@{
         valid = $manifestValid
         error = $manifestError
+        pending = [bool]$PendingInstallManifest
     }
     conflictStatus = $conflictStatus
     issueCodes = @($issueCodes)

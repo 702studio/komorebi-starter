@@ -33,6 +33,7 @@ The EXE is not Authenticode-signed yet. Release SHA-256 files provide integrity 
 - Programs deployed to `%LOCALAPPDATA%\Programs\KomorebiStarter`.
 - Runtime data stored in `%LOCALAPPDATA%\KomorebiStarter`.
 - `KomorebiStarter` logon scheduled task created.
+- Portable rules handle common transient, modal, tray, Parsec, and Cinema 4D windows without embedding user-specific paths.
 - A new terminal may be needed for the updated `PATH` to take effect.
 
 ## Verified Installation (Checksum Validation)
@@ -217,7 +218,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Progr
 
 ## Focus Behavior and Parsec
 
-`masir` changes focus only after relative mouse movement. A stationary pointer therefore does not override `Alt + Arrow` keyboard focus. When an application disables its managed owner for a modal dialog, the focus wrapper activates the visible, enabled last-active popup instead of the disabled owner.
+`masir` changes focus only after relative mouse movement. A stationary pointer therefore does not override keyboard-driven WM focus. Plain `Alt + Arrow` remains native to Windows and File Explorer; agents can use `wm focus left/right/up/down`. When an application disables its managed owner for a modal dialog, the focus wrapper activates the visible, enabled last-active popup instead of the disabled owner.
 
 Parsec can capture shortcuts before `whkd` receives them. With Parsec's keyboard immersive mode active, use Parsec's configured **Immersive Mode** hotkey (default `Ctrl + Shift + I`) or **Detach Input** hotkey (default `Ctrl + Alt + Z`) before using local window-manager shortcuts. This input-capture boundary cannot be bypassed reliably by a local window-manager script. See [Parsec Immersive Mode](https://support.parsec.app/hc/en-us/articles/32361385571860-Immersive-Mode-Setting) and [Parsec hotkeys](https://support.parsec.app/hc/en-us/articles/32381778420372-Configure-Hotkeys).
 

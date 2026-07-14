@@ -381,15 +381,16 @@ try {
     }
 
     Write-Step "Invoking installer: $installScriptPath..."
-    $installArgs = @(
-        '-Preset', $Preset
-    )
-    if ($NonInteractive) { $installArgs += '-NonInteractive' }
-    if ($Json) { $installArgs += '-Json' }
-    if ($InstallFonts) { $installArgs += '-InstallFonts' }
-    if ($MigrateFromGlazeWM) { $installArgs += '-MigrateFromGlazeWM' }
-    if ($Force) { $installArgs += '-Force' }
-    if ($Quiet) { $installArgs += '-Quiet' }
+    $installParameters = @{
+        Preset = $Preset
+    }
+    $childInstallArgs = @('-Preset', $Preset)
+    foreach ($switchName in @('NonInteractive', 'Json', 'InstallFonts', 'MigrateFromGlazeWM', 'Force', 'Quiet')) {
+        if (Get-Variable -Name $switchName -ValueOnly) {
+            $installParameters[$switchName] = $true
+            $childInstallArgs += "-$switchName"
+        }
+    }
 
     $prevCwd = Get-Location
     $success = $false
@@ -402,7 +403,7 @@ try {
         if ($Json) {
             $quotedInstallScriptPath = '"' + $installScriptPath.Replace('"', '\"') + '"'
             $argList = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $quotedInstallScriptPath)
-            foreach ($arg in $installArgs) {
+            foreach ($arg in $childInstallArgs) {
                 $argList += $arg
             }
 
@@ -436,7 +437,7 @@ try {
 
             $success = $true
         } else {
-            & $installScriptPath @installArgs
+            & $installScriptPath @installParameters
             $success = $true
         }
     } catch {

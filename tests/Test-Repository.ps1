@@ -118,6 +118,53 @@ Invoke-TestCheck 'personal-leakage-prevention' {
     return 'Passed absolute user and local workspace path leakage scan.'
 }
 
+Invoke-TestCheck 'portable-application-rule-coverage' {
+    $rulesPath = Join-Path $repoRoot 'config\applications.local.json'
+    $rules = Get-Content -LiteralPath $rulesPath -Raw | ConvertFrom-Json
+    $sections = @($rules.PSObject.Properties.Name)
+
+    foreach ($requiredSection in @(
+        'Local - Flow Launcher',
+        'Local - PowerToys auxiliary windows',
+        'Local - Microsoft Office auxiliary windows',
+        'Local - Chromium transient windows',
+        'Local - Core desktop main windows',
+        'Local - Parsec',
+        'Local - Cinema 4D'
+    )) {
+        if ($sections -notcontains $requiredSection) {
+            throw "Portable application rules are missing section: $requiredSection"
+        }
+    }
+
+    $content = Get-Content -LiteralPath $rulesPath -Raw
+    foreach ($requiredPattern in @(
+        'Chrome_WidgetWin_2',
+        'CASCADIA_HOSTING_WINDOW_CLASS',
+        'MTY_Window',
+        'CINEMA 4D\.exe',
+        'DoesNotEqual'
+    )) {
+        if ($content -notmatch $requiredPattern) {
+            throw "Portable application rule guard is missing: $requiredPattern"
+        }
+    }
+
+    foreach ($forbiddenPattern in @(
+        '(?i)zebar\.exe',
+        '(?i)(Google Chrome|Microsoft Edge|Visual Studio Code)\$',
+        '(?i)[A-Z]:\\Users\\',
+        '(?i)tolgaozisik',
+        '(?i)D:\\PROJECTS'
+    )) {
+        if ($content -match $forbiddenPattern) {
+            throw "Portable application rules contain forbidden content: $forbiddenPattern"
+        }
+    }
+
+    return 'Verified portable rules for transient, modal, core desktop, Parsec, and Cinema 4D windows.'
+}
+
 # 4. Third-party binary restriction
 Invoke-TestCheck 'no-third-party-binaries' {
     $files = Get-ChildItem -Path $repoRoot -File -Recurse |
@@ -145,6 +192,26 @@ Invoke-TestCheck 'bootstrap-hash-enforcement' {
         throw 'bootstrap.ps1 is missing HTTPS download checks.'
     }
     return 'bootstrap.ps1 contains correct HTTPS URL validation and release archive SHA256 checks.'
+}
+
+Invoke-TestCheck 'bootstrap-human-installer-argument-binding' {
+    $bootstrapPath = Join-Path $repoRoot 'bootstrap.ps1'
+    $content = Get-Content -LiteralPath $bootstrapPath -Raw
+
+    if ($content -match '&\s*\$installScriptPath\s+@installArgs') {
+        throw 'Human bootstrap path still array-splats named installer arguments as positional values.'
+    }
+    if ($content -notmatch '(?s)\$installParameters\s*=\s*@\{\s*Preset\s*=\s*\$Preset') {
+        throw 'Human bootstrap path does not bind Preset through a parameter hashtable.'
+    }
+    if ($content -notmatch '&\s*\$installScriptPath\s+@installParameters') {
+        throw 'Human bootstrap path does not invoke install.ps1 with parameter hashtable splatting.'
+    }
+    if ($content -notmatch '\$childInstallArgs\s*=\s*@\(') {
+        throw 'JSON child-process path is missing its separate command-line argument list.'
+    }
+
+    return 'Human and child-process installer argument binding paths are separated correctly.'
 }
 
 # 6. Workspace order
@@ -1456,7 +1523,57 @@ Invoke-TestCheck 'install-transaction-guards-static' {
         }
     }
 
-    return 'Installer contains source-hash, health, and rollback guards; executable coverage remains in pure helper tests.'
+    if ($content -match '&\s*\$startScriptFile\s+-Restart') {
+        throw 'Installer invokes start.ps1 in-process and can lock FocusInterop.dll during rollback.'
+    }
+    if ($content -notmatch '&\s*powershell\.exe\s+@startupArguments') {
+        throw 'Installer does not isolate startup and FocusInterop.dll loading in a child PowerShell process.'
+    }
+    if ($content -notmatch '\$startupExitCode\s*=\s*\$LASTEXITCODE') {
+        throw 'Installer does not verify the isolated startup process exit code.'
+    }
+
+    return 'Installer contains source-hash, isolated-startup, health, and rollback guards; executable coverage remains in pure helper tests.'
+}
+
+Invoke-TestCheck 'deterministic-bar-startup-static' {
+    $startPath = Join-Path $repoRoot 'scripts\start.ps1'
+    $content = Get-Content -LiteralPath $startPath -Raw
+
+    if ($content -match '\$startArguments\s*=\s*@\([^\r\n]*''--bar''') {
+        throw 'start.ps1 still delegates bar startup to komorebic --bar.'
+    }
+    foreach ($requiredPattern in @(
+        '&\s*\$komorebic\s+state',
+        '\[KomorebiStarter\.NativeProcess\]::StartDetached\(',
+        'komorebi-bar\.stderr\.log'
+    )) {
+        if ($content -notmatch $requiredPattern) {
+            throw "Deterministic bar startup guard is missing: $requiredPattern"
+        }
+    }
+
+    if ($content -match '\.RedirectStandard(Output|Error)\s*=\s*\$true') {
+        throw 'start.ps1 redirects bar streams through its own process lifetime.'
+    }
+
+    $interopPath = Join-Path $repoRoot 'scripts\FocusInterop.cs'
+    $interopContent = Get-Content -LiteralPath $interopPath -Raw
+    foreach ($requiredPattern in @(
+        'class\s+NativeProcess',
+        'CreateProcessW\(',
+        'CreateNoWindow',
+        'StartfUseStdHandles',
+        'ProcThreadAttributeHandleList',
+        'UpdateProcThreadAttribute\(',
+        'public\s+static\s+int\s+StartDetached\('
+    )) {
+        if ($interopContent -notmatch $requiredPattern) {
+            throw "Detached process launcher guard is missing: $requiredPattern"
+        }
+    }
+
+    return 'Verified bar starts detached with file-backed streams after the Komorebi command socket is ready.'
 }
 
 # 17. Test-Repository output purity
@@ -1784,6 +1901,40 @@ Invoke-TestCheck 'doctor-noexitcode-ast-check' {
         throw "doctor.ps1 is missing the return branch when NoExitCode is set before exit handling."
     }
     return "Verified doctor.ps1 has a return branch for -NoExitCode before exit handling."
+}
+
+Invoke-TestCheck 'installer-pending-manifest-commit-contract' {
+    $installPath = Join-Path $repoRoot 'install.ps1'
+    $doctorPath = Join-Path $repoRoot 'scripts\doctor.ps1'
+    $install = Get-Content -LiteralPath $installPath -Raw
+    $doctor = Get-Content -LiteralPath $doctorPath -Raw
+
+    if ($doctor -notmatch '\[switch\]\$PendingInstallManifest') {
+        throw 'doctor.ps1 does not expose the explicit pending-install-manifest transaction mode.'
+    }
+    if ($doctor -notmatch 'if\s*\(\s*-not\s+\$PendingInstallManifest\s+-and\s+-not\s+\$manifestValid\s*\)') {
+        throw 'doctor.ps1 does not scope MANIFEST_INVALID suppression to the pending transaction mode.'
+    }
+    if ($install -notmatch '\$doctorScriptFile\s+-Json\s+-NoExitCode\s+-PendingInstallManifest') {
+        throw 'install.ps1 does not use pending manifest mode for its pre-commit health check.'
+    }
+    if ($install -notmatch 'Assert-InstallManifestValid\s+-ManifestObj\s+\$persistedCandidate') {
+        throw 'install.ps1 does not validate the serialized manifest candidate before commit.'
+    }
+    if ($install -notmatch '\[IO\.File\]::(?:Replace|Move)\(\$manifestTempFile') {
+        throw 'install.ps1 does not atomically commit the validated manifest temp file.'
+    }
+    if ($install -match 'Set-Content\s+-LiteralPath\s+\$manifestFile') {
+        throw 'install.ps1 writes install-manifest.json directly instead of using the validated temp-file commit.'
+    }
+
+    $doctorIndex = $install.IndexOf('$doctorScriptFile -Json -NoExitCode -PendingInstallManifest', [StringComparison]::Ordinal)
+    $commitIndex = $install.IndexOf('[IO.File]::Move($manifestTempFile, $manifestFile)', [StringComparison]::Ordinal)
+    if ($doctorIndex -lt 0 -or $commitIndex -lt 0 -or $doctorIndex -ge $commitIndex) {
+        throw 'The pending doctor check must run before the final manifest commit.'
+    }
+
+    return 'Installer pre-commit health and final manifest transaction ordering are guarded.'
 }
 
 # 24. Test-ScheduledTaskEnabled synthetic CIM-like validation

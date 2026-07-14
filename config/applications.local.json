@@ -9,6 +9,15 @@
       }
     ]
   },
+  "Local - Flow Launcher": {
+    "floating": [
+      {
+        "kind": "Exe",
+        "id": "Flow.Launcher.exe",
+        "matching_strategy": "Equals"
+      }
+    ]
+  },
   "Local - Browser picture in picture": {
     "ignore": [
       [
@@ -23,6 +32,354 @@
           "matching_strategy": "Regex"
         }
       ]
+    ]
+  },
+  "Local - PowerToys auxiliary windows": {
+    "ignore": [
+      [
+        {
+          "kind": "Exe",
+          "id": "(?i)^PowerToys.*\\.exe$",
+          "matching_strategy": "Regex"
+        },
+        {
+          "kind": "Class",
+          "id": "^HwndWrapper\\[PowerToys\\.PowerAccent.*\\]$",
+          "matching_strategy": "Regex"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "(?i)^PowerToys.*\\.exe$",
+          "matching_strategy": "Regex"
+        },
+        {
+          "kind": "Title",
+          "id": "(?i).* - Peek$",
+          "matching_strategy": "Regex"
+        }
+      ]
+    ]
+  },
+  "Local - Lively helper windows": {
+    "ignore": [
+      [
+        {
+          "kind": "Exe",
+          "id": "(?i)^Lively(?:\\.exe)?$",
+          "matching_strategy": "Regex"
+        },
+        {
+          "kind": "Class",
+          "id": "HwndWrapper",
+          "matching_strategy": "Contains"
+        }
+      ]
+    ]
+  },
+  "Local - Microsoft Office auxiliary windows": {
+    "ignore": [
+      [
+        {
+          "kind": "Exe",
+          "id": "EXCEL.EXE",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "XLMAIN",
+          "matching_strategy": "DoesNotEqual"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "WINWORD.EXE",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "OpusApp",
+          "matching_strategy": "DoesNotEqual"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "POWERPNT.EXE",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "PPTFrameClass",
+          "matching_strategy": "DoesNotEqual"
+        }
+      ]
+    ],
+    "layered": [
+      {
+        "kind": "Exe",
+        "id": "(?i)^(EXCEL|WINWORD|POWERPNT)\\.EXE$",
+        "matching_strategy": "Regex"
+      }
+    ]
+  },
+  "Local - Unity Editor": {
+    "ignore": [
+      {
+        "kind": "Exe",
+        "id": "(?i)^Unity(?:\\.exe)?$",
+        "matching_strategy": "Regex"
+      },
+      {
+        "kind": "Class",
+        "id": "UnityWndClass",
+        "matching_strategy": "Equals"
+      }
+    ]
+  },
+  "Local - Chromium transient windows": {
+    "ignore": [
+      [
+        {
+          "kind": "Exe",
+          "id": "(?i)^(chrome|msedge|brave|brave-browser|vivaldi)\\.exe$",
+          "matching_strategy": "Regex"
+        },
+        {
+          "kind": "Title",
+          "id": "^_crx__",
+          "matching_strategy": "Regex"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "(?i)^(chrome|msedge|brave|brave-browser|vivaldi)\\.exe$",
+          "matching_strategy": "Regex"
+        },
+        {
+          "kind": "Class",
+          "id": "Chrome_WidgetWin_2",
+          "matching_strategy": "Equals"
+        }
+      ]
+    ]
+  },
+  "Local - Core desktop main windows": {
+    "manage": [
+      [
+        {
+          "kind": "Exe",
+          "id": "chrome.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "Chrome_WidgetWin_1",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "msedge.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "Chrome_WidgetWin_1",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "WindowsTerminal.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "CASCADIA_HOSTING_WINDOW_CLASS",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "WhatsApp.Root.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "WinUIDesktopWin32WindowClass",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "Obsidian.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "Chrome_WidgetWin_1",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "Cursor.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "Chrome_WidgetWin_1",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "Code.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "Chrome_WidgetWin_1",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "firefox.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "MozillaWindowClass",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "explorer.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "^(CabinetWClass|ExploreWClass)$",
+          "matching_strategy": "Regex"
+        }
+      ]
+    ],
+    "tray_and_multi_window": [
+      {
+        "kind": "Exe",
+        "id": "(?i)^(WhatsApp.Root|Obsidian|Cursor|Code)\\.exe$",
+        "matching_strategy": "Regex"
+      }
+    ]
+  },
+  "Local - Parsec": {
+    "manage": [
+      [
+        {
+          "kind": "Exe",
+          "id": "parsecd.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "MTY_Window",
+          "matching_strategy": "Equals"
+        }
+      ]
+    ],
+    "tray_and_multi_window": [
+      {
+        "kind": "Exe",
+        "id": "parsecd.exe",
+        "matching_strategy": "Equals"
+      }
+    ]
+  },
+  "Local - Cinema 4D": {
+    "ignore": [
+      [
+        {
+          "kind": "Exe",
+          "id": "CINEMA 4D.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "(?i)(splash|tooltip|tooltips_class32)",
+          "matching_strategy": "Regex"
+        }
+      ]
+    ],
+    "floating": [
+      [
+        {
+          "kind": "Exe",
+          "id": "CINEMA 4D.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "#32770",
+          "matching_strategy": "Equals"
+        }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "CINEMA 4D.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Title",
+          "id": "(?i)(preferences|render settings|project settings|program settings|customize commands|options|about|plugin|console|picture viewer|content browser)",
+          "matching_strategy": "Regex"
+        }
+      ]
+    ],
+    "manage": [
+      [
+        {
+          "kind": "Exe",
+          "id": "CINEMA 4D.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Title",
+          "id": "Cinema 4D",
+          "matching_strategy": "Contains"
+        },
+        {
+          "kind": "Title",
+          "id": "Preferences",
+          "matching_strategy": "DoesNotContain"
+        },
+        {
+          "kind": "Title",
+          "id": "Settings",
+          "matching_strategy": "DoesNotContain"
+        }
+      ]
+    ],
+    "tray_and_multi_window": [
+      {
+        "kind": "Exe",
+        "id": "CINEMA 4D.exe",
+        "matching_strategy": "Equals"
+      }
     ]
   }
 }

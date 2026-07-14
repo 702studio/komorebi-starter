@@ -149,13 +149,16 @@ try {
         $fontNames = @(& $bar --fonts 2>$null | ForEach-Object { $_.Trim() })
     }
 
-    # Font checking logic matching Segoe UI Variable fallback
+    # Prefer the bundled system-font config, with the Nerd Font variant when available.
     $barConfig = if (($fontNames -contains 'Segoe UI Variable' -or $fontNames -contains 'Segoe UI Variable Text') -and (Test-Path -LiteralPath $defaultBarPath)) {
         $defaultBarPath
     } elseif ((($fontNames -contains 'JetBrains Mono') -or ($fontNames -contains 'JetBrains Mono Regular') -or ($fontNames -contains 'JetBrainsMono NF') -or ($fontNames -contains 'JetBrainsMono Nerd Font')) -and (Test-Path -LiteralPath $jetBrainsBarPath)) {
         $jetBrainsBarPath
     } else {
         $defaultBarPath
+    }
+    if (-not (Test-Path -LiteralPath $barConfig -PathType Leaf)) {
+        throw "Komorebi bar configuration not found: $barConfig"
     }
 
     # Temporarily prepend resolved command paths to env:path if not present
@@ -184,7 +187,7 @@ try {
         $env:Path = $allEntries -join ';'
     }
 
-    $startArguments = @('start', '--config', $configPath, '--whkd', '--masir', '--bar')
+    $startArguments = @('start', '--config', $configPath, '--whkd', '--masir')
     if ($CleanState) {
         $startArguments += '--clean-state'
     }
@@ -200,6 +203,43 @@ try {
     }
     if (-not (Get-Process -Name komorebi -ErrorAction SilentlyContinue)) {
         throw 'komorebi.exe did not start within 8 seconds.'
+    }
+
+    $wmSocketReady = $false
+    $deadline = [DateTime]::UtcNow.AddSeconds(8)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        & $komorebic state 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $wmSocketReady = $true
+            break
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $wmSocketReady) {
+        Stop-KomorebiEnvironment
+        throw 'komorebi.exe started, but its command socket was not ready within 8 seconds.'
+    }
+
+    $startupLogHome = Join-Path $stateHome 'logs'
+    $barStdoutPath = Join-Path $startupLogHome 'komorebi-bar.stdout.log'
+    $barStderrPath = Join-Path $startupLogHome 'komorebi-bar.stderr.log'
+    $null = New-Item -ItemType Directory -Path $startupLogHome -Force
+    Remove-Item -LiteralPath $barStdoutPath, $barStderrPath -Force -ErrorAction SilentlyContinue
+
+    # The native launcher gives the bar file-backed streams that outlive this script.
+    # CREATE_NO_WINDOW suppresses its console without hiding the OpenGL GUI window.
+    $quotedBarConfig = '"' + $barConfig + '"'
+    Initialize-FocusInterop
+    $barProcessId = [KomorebiStarter.NativeProcess]::StartDetached(
+        $bar,
+        ('--config ' + $quotedBarConfig),
+        (Split-Path -Parent $bar),
+        $barStdoutPath,
+        $barStderrPath)
+    $barProcess = Get-Process -Id $barProcessId -ErrorAction SilentlyContinue
+    if ($null -eq $barProcess) {
+        Stop-KomorebiEnvironment
+        throw "komorebi-bar process $barProcessId exited immediately after creation."
     }
 
     $deadline = [DateTime]::UtcNow.AddSeconds(8)
@@ -222,8 +262,16 @@ try {
         }
     }
     if ($missing.Count -gt 0) {
+        $barDiagnostic = $null
+        if ($missing -contains 'komorebi-bar' -and (Test-Path -LiteralPath $barStderrPath -PathType Leaf)) {
+            $barDiagnostic = ([string](Get-Content -LiteralPath $barStderrPath -Raw -ErrorAction SilentlyContinue)).Trim()
+        }
         Stop-KomorebiEnvironment
-        throw "Startup failed; missing processes: $($missing -join ', ')"
+        $message = "Startup failed; missing processes: $($missing -join ', ')"
+        if (-not [string]::IsNullOrWhiteSpace($barDiagnostic)) {
+            $message += ". komorebi-bar: $barDiagnostic"
+        }
+        throw $message
     }
 
     if (Get-Process -Name glazewm, zebar -ErrorAction SilentlyContinue) {

@@ -237,6 +237,7 @@ $backupRoot = $null
 $backupCommitted = $false
 $startupResult = $null
 $doctorResult = $null
+$manifestTempFile = $null
 
 try {
     # [2] Ensuring winget dependencies
@@ -645,7 +646,20 @@ try {
     } else {
         $startScriptFile = Join-Path $installDir 'start.ps1'
         if (Test-Path -LiteralPath $startScriptFile) {
-            $startupText = (& $startScriptFile -Restart -CleanState 2>&1 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+            $startupArguments = @(
+                '-NoProfile',
+                '-NonInteractive',
+                '-ExecutionPolicy', 'Bypass',
+                '-File', $startScriptFile,
+                '-Restart',
+                '-CleanState'
+            )
+            $startupOutput = @(& powershell.exe @startupArguments 2>&1)
+            $startupExitCode = $LASTEXITCODE
+            $startupText = ($startupOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+            if ($startupExitCode -ne 0) {
+                throw "Startup script exited with code ${startupExitCode}: $startupText"
+            }
             try {
                 $startupResult = $startupText | ConvertFrom-Json
             } catch {
@@ -667,14 +681,19 @@ try {
     } else {
         $doctorScriptFile = Join-Path $installDir 'doctor.ps1'
         if (Test-Path -LiteralPath $doctorScriptFile) {
-            $doctorText = (& $doctorScriptFile -Json -NoExitCode 2>&1 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+            $doctorText = (& $doctorScriptFile -Json -NoExitCode -PendingInstallManifest 2>&1 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
             try {
                 $doctorResult = $doctorText | ConvertFrom-Json
             } catch {
                 throw "Doctor did not output valid JSON: $doctorText"
             }
             if ($null -eq $doctorResult -or $doctorResult.ok -ne $true) {
-                throw "Doctor failed with unhealthy status."
+                $issueSummary = if ($null -ne $doctorResult -and $null -ne $doctorResult.issueCodes) {
+                    @($doctorResult.issueCodes) -join ', '
+                } else {
+                    'unknown issue'
+                }
+                throw "Doctor failed with unhealthy status: $issueSummary"
             }
         }
     }
@@ -708,7 +727,7 @@ try {
         $glazeBackupManifestSHA256 = $backupManifestSHA256
     }
 
-    # [12] Write install-manifest.json last
+    # [12] Validate and atomically commit install-manifest.json last
     $manifestObj = [ordered]@{
         productId = $productId
         schemaVersion = $schemaVersion
@@ -734,7 +753,25 @@ try {
             action = "Write install-manifest.json"
         })
     } else {
-        $manifestObj | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestFile -Encoding UTF8
+        $manifestJson = $manifestObj | ConvertTo-Json -Depth 6
+        $manifestCandidate = $manifestJson | ConvertFrom-Json
+        Assert-InstallManifestValid -ManifestObj $manifestCandidate -ExpectedProductId $productId -ExpectedSchemaVersion $schemaVersion -ExpectedInstallDir $installDir -ExpectedConfigHome $configHome -VerifyBackupLinkage
+
+        $manifestTempFile = Join-Path $stateHome ("install-manifest.{0}.tmp" -f [Guid]::NewGuid().ToString('N'))
+        [IO.File]::WriteAllText($manifestTempFile, $manifestJson, [Text.UTF8Encoding]::new($false))
+        $persistedCandidate = Get-Content -LiteralPath $manifestTempFile -Raw | ConvertFrom-Json
+        Assert-InstallManifestValid -ManifestObj $persistedCandidate -ExpectedProductId $productId -ExpectedSchemaVersion $schemaVersion -ExpectedInstallDir $installDir -ExpectedConfigHome $configHome -VerifyBackupLinkage
+
+        $doctorResult.manifest.valid = $true
+        $doctorResult.manifest.error = $null
+        $doctorResult.manifest.pending = $false
+
+        if (Test-Path -LiteralPath $manifestFile -PathType Leaf) {
+            [IO.File]::Replace($manifestTempFile, $manifestFile, $null)
+        } else {
+            [IO.File]::Move($manifestTempFile, $manifestFile)
+        }
+        $manifestTempFile = $null
     }
 
 } catch {
@@ -750,6 +787,9 @@ try {
     }
     throw $originalException
 } finally {
+    if (-not [string]::IsNullOrWhiteSpace($manifestTempFile) -and (Test-Path -LiteralPath $manifestTempFile)) {
+        Remove-Item -LiteralPath $manifestTempFile -Force -ErrorAction SilentlyContinue
+    }
     if (-not $IsPlanMode -and $null -ne $tempFetchRoot -and (Test-Path -LiteralPath $tempFetchRoot)) {
         $canonicalTempRoot = Get-CanonicalPath $tempFetchRoot
         $canonicalTempEnv = Get-CanonicalPath $env:TEMP
