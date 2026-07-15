@@ -105,7 +105,7 @@ The CLI wrapper (`wm.cmd` -> `wm.ps1`) manages execution. It guarantees non-inte
 - `wm pause` (note: `wm pause-hook` is internal to whkd for state notification and should not be invoked directly by agents)
 - `wm retile`
 - `wm restore`: Restore minimized windows (upstream restore-windows functionality; not to be confused with the installer's `restore.ps1` recovery tool)
-- `wm reload`: Reload configuration (asynchronous operation; agents must poll `wm state` with bounded retries to verify completion)
+- `wm reload`: Reload configuration through a controlled process restart so removed matching rules cannot remain resident (asynchronous; poll `wm state` with bounded retries)
 - `wm restart`: Restart the window manager (asynchronous operation; agents must poll `wm state` with bounded retries to verify completion)
 - `wm start`
 - `wm stop`

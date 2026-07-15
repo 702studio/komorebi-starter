@@ -164,6 +164,18 @@
           "id": "Chrome_WidgetWin_2",
           "matching_strategy": "Equals"
         }
+      ],
+      [
+        {
+          "kind": "Exe",
+          "id": "chrome.exe",
+          "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Class",
+          "id": "Chrome_WidgetWin_1",
+          "matching_strategy": "Equals"
+        }
       ]
     ]
   },
@@ -179,6 +191,11 @@
           "kind": "Class",
           "id": "Chrome_WidgetWin_1",
           "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Title",
+          "id": "(?i)(?:^| - )Google Chrome$",
+          "matching_strategy": "Regex"
         }
       ],
       [
@@ -191,6 +208,11 @@
           "kind": "Class",
           "id": "Chrome_WidgetWin_1",
           "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Title",
+          "id": "(?i)(?:^| - )Microsoft Edge$",
+          "matching_strategy": "Regex"
         }
       ],
       [
@@ -227,6 +249,11 @@
           "kind": "Class",
           "id": "Chrome_WidgetWin_1",
           "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Title",
+          "id": "(?i)(?:^| - )Obsidian(?: \\d+(?:\\.\\d+)*)?$",
+          "matching_strategy": "Regex"
         }
       ],
       [
@@ -239,6 +266,11 @@
           "kind": "Class",
           "id": "Chrome_WidgetWin_1",
           "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Title",
+          "id": "(?i)(?:^| - )Cursor$",
+          "matching_strategy": "Regex"
         }
       ],
       [
@@ -251,6 +283,11 @@
           "kind": "Class",
           "id": "Chrome_WidgetWin_1",
           "matching_strategy": "Equals"
+        },
+        {
+          "kind": "Title",
+          "id": "(?i)(?:^| - )Visual Studio Code$",
+          "matching_strategy": "Regex"
         }
       ],
       [
