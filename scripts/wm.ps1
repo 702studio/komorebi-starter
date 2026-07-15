@@ -364,74 +364,22 @@ function Invoke-TargetActivationShared {
     return $resultJson
 }
 
-function Invoke-ConfigurationReplacement {
-    $cursorBefore = Get-CursorSnapshot
-    $focusedBefore = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
-    $targetHwnd = if ($null -ne $focusedBefore -and
-        $null -ne $focusedBefore.PSObject.Properties['hwnd']) {
-        [long]$focusedBefore.hwnd
-    } else {
-        0L
-    }
-    $barPidsBefore = @(Get-Process -Name komorebi-bar -ErrorAction SilentlyContinue |
-        ForEach-Object { $_.Id })
-
-    Invoke-KomorebicAction -Arguments @('replace-configuration', $script:ConfigPath)
-
-    $barPidsAfter = @()
-    $deadline = [DateTime]::UtcNow.AddSeconds(3)
-    do {
-        $barPidsAfter = @(Get-Process -Name komorebi-bar -ErrorAction SilentlyContinue |
-            ForEach-Object { $_.Id })
-        if (@($barPidsAfter | Where-Object { $_ -notin $barPidsBefore }).Count -gt 0) {
-            break
-        }
-        Start-Sleep -Milliseconds 50
-    } while ([DateTime]::UtcNow -lt $deadline)
-
-    $barWindowPolicy = Wait-KomorebiBarWindowPolicy
-    $cursorAfter = Get-CursorSnapshot
-    $cursorMoved = Test-CursorSnapshotChanged -Before $cursorBefore -After $cursorAfter
-    $focusResult = [ordered]@{
-        attempted = $false
-        ok = $true
-        reason = 'no-focused-target'
-        activation = $null
-    }
-
-    if ($targetHwnd -ne 0) {
-        $focusedAfter = Get-FocusedKomorebiWindow -State (Get-KomorebiState)
-        if ($null -eq $focusedAfter -or
-            $null -eq $focusedAfter.PSObject.Properties['hwnd'] -or
-            [long]$focusedAfter.hwnd -ne $targetHwnd) {
-            $focusResult.ok = $false
-            $focusResult.reason = 'komorebi-target-changed-during-reload'
-        } elseif ($cursorMoved) {
-            $focusResult.reason = 'user-input-detected'
-        } else {
-            $currentForeground = [KomorebiStarter.NativeFocus]::GetForegroundWindow()
-            $currentForegroundRoot = Get-RootWindowHandle -Window $currentForeground
-            $activation = Invoke-ForegroundActivation -WindowHandle $targetHwnd `
-                -PreviousForegroundRootHwnd (ConvertFrom-WindowHandle -Value $currentForegroundRoot)
-            $focusResult.attempted = $true
-            $focusResult.ok = $activation.ok
-            $focusResult.reason = $activation.reason
-            $focusResult.activation = $activation
-        }
-    }
+function Request-ConfigurationRestart {
+    Start-DetachedScript -Path $script:StartScript -Arguments @(
+        '-Restart',
+        '-DelayMilliseconds', '300'
+    )
 
     [pscustomobject]@{
-        ok = $focusResult.ok
+        ok = $true
         command = 'reload'
+        asynchronous = $true
+        lifecycle = 'restart'
+        reason = 'purge-resident-configuration-rules'
         config = $script:ConfigPath
-        barRestartObserved = (@($barPidsAfter | Where-Object { $_ -notin $barPidsBefore }).Count -gt 0)
-        barPidsBefore = $barPidsBefore
-        barPidsAfter = $barPidsAfter
-        barWindowPolicy = $barWindowPolicy
-        cursorMoved = $cursorMoved
-        focus = [pscustomobject]$focusResult
+        verification = 'poll wm state with bounded retries'
         timestamp = (Get-Date).ToString('o')
-    } | ConvertTo-Json -Depth 8 -Compress
+    } | ConvertTo-Json -Depth 5 -Compress
 }
 
 function Start-DetachedScript {
@@ -811,7 +759,7 @@ switch ($normalizedCommand) {
         if (-not (Test-Path -LiteralPath $script:ConfigPath)) {
             throw "Komorebi configuration not found: $script:ConfigPath"
         }
-        Invoke-ConfigurationReplacement
+        Request-ConfigurationRestart
     }
     'restart' {
         Start-DetachedScript -Path $script:StartScript -Arguments @('-Restart', '-DelayMilliseconds', '300')

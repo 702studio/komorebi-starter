@@ -197,7 +197,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Progr
 |---|---|
 | Stop WM | `Alt + Shift + E` |
 | Restart WM | `Alt + Shift + Backspace` or `Alt + Shift + X` |
-| Reload config | `Alt + Shift + R` |
+| Reload config (controlled restart) | `Alt + Shift + R` |
 | Retile | `Alt + Shift + W` |
 | Pause | `Alt + Shift + P` |
 

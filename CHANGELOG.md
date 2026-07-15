@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Chrome Downloads and other owned Chromium tool windows remain outside tiling while verified browser and Electron main windows stay managed.
+- `wm reload` now uses the controlled restart lifecycle so removed application rules cannot remain resident in Komorebi.
+
 ## [0.3.0] - 2026-07-14
 
 ### Added

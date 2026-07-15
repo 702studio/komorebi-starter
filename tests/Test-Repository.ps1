@@ -152,13 +152,104 @@ Invoke-TestCheck 'portable-application-rule-coverage' {
 
     foreach ($forbiddenPattern in @(
         '(?i)zebar\.exe',
-        '(?i)(Google Chrome|Microsoft Edge|Visual Studio Code)\$',
         '(?i)[A-Z]:\\Users\\',
         '(?i)tolgaozisik',
         '(?i)D:\\PROJECTS'
     )) {
         if ($content -match $forbiddenPattern) {
             throw "Portable application rules contain forbidden content: $forbiddenPattern"
+        }
+    }
+
+    function Test-ExactRuleMember {
+        param(
+            [Parameter(Mandatory = $true)]$Actual,
+            [Parameter(Mandatory = $true)]$Expected
+        )
+
+        return ([string]$Actual.kind -ceq [string]$Expected.kind -and
+            [string]$Actual.id -ceq [string]$Expected.id -and
+            [string]$Actual.matching_strategy -ceq [string]$Expected.matching_strategy)
+    }
+
+    function Test-ExactCompositeRule {
+        param(
+            [Parameter(Mandatory = $true)]$Actual,
+            [Parameter(Mandatory = $true)][object[]]$Expected
+        )
+
+        $members = @($Actual)
+        if ($members.Count -ne $Expected.Count) {
+            return $false
+        }
+
+        foreach ($expectedMember in $Expected) {
+            $memberMatches = @($members | Where-Object {
+                Test-ExactRuleMember -Actual $_ -Expected $expectedMember
+            })
+            if ($memberMatches.Count -ne 1) {
+                return $false
+            }
+        }
+
+        return $true
+    }
+
+    $chromeIgnoreExpected = @(
+        [pscustomobject]@{ kind = 'Exe'; id = 'chrome.exe'; matching_strategy = 'Equals' },
+        [pscustomobject]@{ kind = 'Class'; id = 'Chrome_WidgetWin_1'; matching_strategy = 'Equals' }
+    )
+    $chromeIgnoreFound = $false
+    foreach ($candidate in @($rules.'Local - Chromium transient windows'.ignore)) {
+        if (Test-ExactCompositeRule -Actual $candidate -Expected $chromeIgnoreExpected) {
+            $chromeIgnoreFound = $true
+            break
+        }
+    }
+    if (-not $chromeIgnoreFound) {
+        throw 'Chrome transient-window policy is missing the exact creation-time ignore composite.'
+    }
+
+    $mainWindowPolicies = @(
+        [pscustomobject]@{ exe = 'chrome.exe'; title = '(?i)(?:^| - )Google Chrome$' },
+        [pscustomobject]@{ exe = 'msedge.exe'; title = '(?i)(?:^| - )Microsoft Edge$' },
+        [pscustomobject]@{ exe = 'Obsidian.exe'; title = '(?i)(?:^| - )Obsidian(?: \d+(?:\.\d+)*)?$' },
+        [pscustomobject]@{ exe = 'Cursor.exe'; title = '(?i)(?:^| - )Cursor$' },
+        [pscustomobject]@{ exe = 'Code.exe'; title = '(?i)(?:^| - )Visual Studio Code$' }
+    )
+    $manageRules = @($rules.'Local - Core desktop main windows'.manage)
+    foreach ($policy in $mainWindowPolicies) {
+        $expected = @(
+            [pscustomobject]@{ kind = 'Exe'; id = $policy.exe; matching_strategy = 'Equals' },
+            [pscustomobject]@{ kind = 'Class'; id = 'Chrome_WidgetWin_1'; matching_strategy = 'Equals' },
+            [pscustomobject]@{ kind = 'Title'; id = $policy.title; matching_strategy = 'Regex' }
+        )
+        $exactRuleFound = $false
+
+        foreach ($candidate in $manageRules) {
+            $members = @($candidate)
+            $hasExe = @($members | Where-Object {
+                [string]$_.kind -ceq 'Exe' -and
+                [string]$_.id -ceq [string]$policy.exe -and
+                [string]$_.matching_strategy -ceq 'Equals'
+            }).Count -eq 1
+            $hasClass = @($members | Where-Object {
+                [string]$_.kind -ceq 'Class' -and
+                [string]$_.id -ceq 'Chrome_WidgetWin_1' -and
+                [string]$_.matching_strategy -ceq 'Equals'
+            }).Count -eq 1
+            $titleCount = @($members | Where-Object { [string]$_.kind -ceq 'Title' }).Count
+
+            if ($hasExe -and $hasClass -and $titleCount -eq 0) {
+                throw "Broad main-window manage rule is forbidden for $($policy.exe)."
+            }
+            if (Test-ExactCompositeRule -Actual $candidate -Expected $expected) {
+                $exactRuleFound = $true
+            }
+        }
+
+        if (-not $exactRuleFound) {
+            throw "Exact title-constrained main-window rule is missing for $($policy.exe)."
         }
     }
 
@@ -240,6 +331,46 @@ Invoke-TestCheck 'move-workspace-guard-check' {
         throw 'wm.ps1 is missing the single-monitor move-workspace no-op guard check.'
     }
     return 'Tested single-monitor move-workspace guard check is present in wm.ps1.'
+}
+
+# 7b. Reload must purge resident matching rules through the lifecycle owner.
+Invoke-TestCheck 'wm-reload-lifecycle-check' {
+    $wmScriptPath = Join-Path $repoRoot 'scripts/wm.ps1'
+    if (-not (Test-Path -LiteralPath $wmScriptPath)) {
+        throw 'scripts/wm.ps1 not found.'
+    }
+    $content = Get-Content -LiteralPath $wmScriptPath -Raw
+
+    if ($content -match '\breplace-configuration\b') {
+        throw 'wm reload must not use replace-configuration because removed rules can remain resident.'
+    }
+
+    $functionMatch = [regex]::Match(
+        $content,
+        '(?ms)^function\s+Request-ConfigurationRestart\s*\{(?<body>.*?)^\}'
+    )
+    if (-not $functionMatch.Success) {
+        throw 'wm.ps1 is missing Request-ConfigurationRestart.'
+    }
+    $body = $functionMatch.Groups['body'].Value
+    foreach ($requiredPattern in @(
+        'Start-DetachedScript\s+-Path\s+\$script:StartScript\s+-Arguments',
+        "(?s)@\(\s*'-Restart'\s*,\s*'-DelayMilliseconds'\s*,\s*'300'\s*\)",
+        'asynchronous\s*=\s*\$true',
+        "lifecycle\s*=\s*'restart'",
+        "reason\s*=\s*'purge-resident-configuration-rules'",
+        "verification\s*=\s*'poll wm state with bounded retries'"
+    )) {
+        if ($body -notmatch $requiredPattern) {
+            throw "wm reload restart contract is missing: $requiredPattern"
+        }
+    }
+
+    if ($content -notmatch "(?ms)^\s*'reload'\s*\{.*?Request-ConfigurationRestart\s*\}") {
+        throw 'The wm reload command does not delegate to Request-ConfigurationRestart.'
+    }
+
+    return 'Verified that wm reload performs an asynchronous controlled restart and cannot retain deleted rules.'
 }
 
 # 8. Path ownership guards check (Behavioral check)
