@@ -12,7 +12,7 @@ Install the latest verified release non-interactively:
 & ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/702studio/komorebi-starter/main/bootstrap.ps1'))) -Version latest -NonInteractive -Quiet -Json
 ```
 
-Replace `latest` with an immutable tag such as `v0.3.0` when reproducibility is required. Add `-WhatIf` for a plan, `-MigrateFromGlazeWM` for explicit takeover, or `-InstallFonts` for the optional font. Do not use `-Force` unless foreign or user-edited target files have been reviewed and backed up.
+Replace `latest` with an immutable tag such as `v0.3.1` when reproducibility is required. Add `-WhatIf` for a plan, `-MigrateFromGlazeWM` for explicit takeover, or `-InstallFonts` for the optional font. Do not use `-Force` unless foreign or user-edited target files have been reviewed and backed up.
 
 Check for the WinGet package before selecting that route:
 
