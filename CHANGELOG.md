@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-16
+
 ### Changed
 - Reframed the repository front page around the one-command install, deterministic agent workflow, real Windows focus behavior, and explicit trust boundaries.
 - Moved the expanded release-integrity walkthrough into a dedicated verified-installation guide and added a repository-owned product schematic.
