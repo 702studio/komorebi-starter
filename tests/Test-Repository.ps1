@@ -103,7 +103,7 @@ Invoke-TestCheck 'personal-leakage-prevention' {
     $pattern = '(?i)([a-z]:\\users\\[^\\\s"''<>]+|[a-z]:\\projects\\coding_base)'
 
     foreach ($file in $files) {
-        if ($file.Extension -match '\.(ps1|json|cmd|bat|md|txt|yml|yaml|properties)$' -or $file.Name -match '^(LICENSE|CODEOWNERS)$') {
+        if ($file.Extension -match '\.(ps1|json|cmd|bat|md|svg|txt|yml|yaml|properties)$' -or $file.Name -match '^(LICENSE|CODEOWNERS)$') {
             $content = Get-Content -LiteralPath $file.FullName -Raw
             if ($content -match $pattern) {
                 $leakedCount++
@@ -2301,6 +2301,9 @@ Invoke-TestCheck 'deterministic-release-build-test' {
                         '^CHANGELOG\.md$',
                         '^CODE_OF_CONDUCT\.md$',
                         '^docs/FOCUS_QA\.md$',
+                        '^docs/VERIFY_INSTALL\.md$',
+                        '^docs/assets/readme-hero\.svg$',
+                        '^docs/assets/readme-hero-mobile\.svg$',
                         '^AGENTS\.md$',
                         '^agent-manifest\.json$',
                         '^config/(?:komorebi|komorebi\.bar|komorebi\.bar\.jetbrains|applications\.local)\.json$',
@@ -2329,6 +2332,9 @@ Invoke-TestCheck 'deterministic-release-build-test' {
                     'restore.ps1',
                     'agent-manifest.json',
                     'docs/FOCUS_QA.md',
+                    'docs/VERIFY_INSTALL.md',
+                    'docs/assets/readme-hero.svg',
+                    'docs/assets/readme-hero-mobile.svg',
                     'config/komorebi.json',
                     'config/komorebi.bar.json',
                     'config/komorebi.bar.jetbrains.json',
@@ -2475,6 +2481,9 @@ Invoke-TestCheck 'distribution-audit-findings-static' {
         "SECURITY.md",
         "CHANGELOG.md",
         "docs/FOCUS_QA.md",
+        "docs/VERIFY_INSTALL.md",
+        "docs/assets/readme-hero.svg",
+        "docs/assets/readme-hero-mobile.svg",
         "PSScriptAnalyzerSettings.psd1",
         "config/komorebi.json",
         "config/komorebi.bar.json",
@@ -2593,7 +2602,8 @@ Invoke-TestCheck 'documentation-and-release-governance-contract' {
     }
 
     $readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
-    $allDocs = @('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SUPPORT.md', 'SECURITY.md', 'CHANGELOG.md') |
+    $verifyInstall = Get-Content -LiteralPath (Join-Path $repoRoot 'docs\VERIFY_INSTALL.md') -Raw
+    $allDocs = @('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SUPPORT.md', 'SECURITY.md', 'CHANGELOG.md', 'docs\VERIFY_INSTALL.md') |
         ForEach-Object { Get-Content -LiteralPath (Join-Path $repoRoot $_) -Raw }
     $joinedDocs = $allDocs -join [Environment]::NewLine
     foreach ($forbidden in @('no admin required', 'noncommercial purposes are permitted', 'scripts\package.ps1')) {
@@ -2612,8 +2622,41 @@ Invoke-TestCheck 'documentation-and-release-governance-contract' {
             throw "README shortcut contract is missing: $requiredShortcut"
         }
     }
-    if ($readme -notmatch '\^\[a-fA-F0-9\]\{64\}\[ \\t\]\+\\\*\?komorebi-starter\\\.zip\$') {
-        throw 'README manual verification does not enforce the exact checksum grammar.'
+    if ($readme.IndexOf('docs/VERIFY_INSTALL.md', [StringComparison]::Ordinal) -lt 0) {
+        throw 'README does not link to the verified installation guide.'
+    }
+    if ($verifyInstall -notmatch '\^\[a-fA-F0-9\]\{64\}\[ \\t\]\+\\\*\?komorebi-starter\\\.zip\$') {
+        throw 'Verified installation guide does not enforce the exact checksum grammar.'
+    }
+
+    $heroRelativePaths = @('docs/assets/readme-hero.svg', 'docs/assets/readme-hero-mobile.svg')
+    foreach ($heroRelativePath in $heroRelativePaths) {
+        $heroPath = Join-Path $repoRoot ($heroRelativePath -replace '/', [IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -LiteralPath $heroPath -PathType Leaf)) {
+            throw "README hero asset is missing: $heroRelativePath"
+        }
+        if ($readme.IndexOf($heroRelativePath, [StringComparison]::Ordinal) -lt 0) {
+            throw "README does not reference local hero asset: $heroRelativePath"
+        }
+
+        $heroContent = Get-Content -LiteralPath $heroPath -Raw
+        try {
+            [xml]$heroXml = $heroContent
+        } catch {
+            throw "README hero asset is not valid XML ($heroRelativePath): $_"
+        }
+        if ($null -eq $heroXml.svg -or $heroContent -notmatch '<title\s' -or $heroContent -notmatch '<desc\s') {
+            throw "README hero asset is missing SVG accessibility metadata: $heroRelativePath"
+        }
+        foreach ($forbiddenHeroPattern in @('<script\b', '<foreignObject\b', '(?:href|src)\s*=\s*["'']https?://', 'file:///', 'C:\\Users\\')) {
+            if ($heroContent -match $forbiddenHeroPattern) {
+                throw "README hero asset contains forbidden active, external, or personal content ($heroRelativePath): $forbiddenHeroPattern"
+            }
+        }
+    }
+    if ($readme -notmatch '(?is)<source\s+[^>]*media="\(max-width:\s*520px\)"[^>]*srcset="docs/assets/readme-hero-mobile\.svg"' -or
+        $readme -notmatch '(?is)<img\s+[^>]*src="docs/assets/readme-hero\.svg"[^>]*alt="[^"]+"') {
+        throw 'README must provide a mobile hero source and descriptive desktop fallback.'
     }
 
     return 'Verified documentation accuracy, analyzer policy, immutable Actions, and release governance controls.'

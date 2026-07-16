@@ -78,6 +78,9 @@ $RequiredFiles = @(
     "SECURITY.md",
     "CHANGELOG.md",
     "docs/FOCUS_QA.md",
+    "docs/VERIFY_INSTALL.md",
+    "docs/assets/readme-hero.svg",
+    "docs/assets/readme-hero-mobile.svg",
     "agent-manifest.json",
     "PSScriptAnalyzerSettings.psd1",
     "config/komorebi.json",
@@ -109,7 +112,9 @@ foreach ($req in $RequiredFiles) {
 # Validate required directories exist
 $RequiredDirs = @(
     "config",
-    "scripts"
+    "scripts",
+    "docs",
+    "docs/assets"
 )
 foreach ($rd in $RequiredDirs) {
     $rdPath = Join-Path $realRepoRoot $rd
@@ -119,7 +124,7 @@ foreach ($rd in $RequiredDirs) {
 }
 
 # Explicit allowlist of allowed files/patterns
-# Excludes .git, .reference, .github, generated assets, and third-party binaries.
+# Excludes .git, .reference, .github, unowned generated assets, and third-party binaries.
 $AllowedPatterns = @(
     '^bootstrap\.ps1$',
     '^install\.ps1$',
@@ -134,6 +139,9 @@ $AllowedPatterns = @(
     '^CHANGELOG\.md$',
     '^CODE_OF_CONDUCT\.md$',
     '^docs/FOCUS_QA\.md$',
+    '^docs/VERIFY_INSTALL\.md$',
+    '^docs/assets/readme-hero\.svg$',
+    '^docs/assets/readme-hero-mobile\.svg$',
     '^AGENTS\.md$',
     '^agent-manifest\.json$',
     '^config/(?:komorebi|komorebi\.bar|komorebi\.bar\.jetbrains|applications\.local)\.json$',

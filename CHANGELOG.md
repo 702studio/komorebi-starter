@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Reframed the repository front page around the one-command install, deterministic agent workflow, real Windows focus behavior, and explicit trust boundaries.
+- Moved the expanded release-integrity walkthrough into a dedicated verified-installation guide and added a repository-owned product schematic.
+
 ### Fixed
 - Chrome Downloads and other owned Chromium tool windows remain outside tiling while verified browser and Electron main windows stay managed.
 - `wm reload` now uses the controlled restart lifecycle so removed application rules cannot remain resident in Komorebi.
