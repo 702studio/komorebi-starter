@@ -20,6 +20,19 @@ Komorebi, whkd, masir, and komorebi-bar, assembled into one reversible baseline.
   </picture>
 </p>
 
+## See it run
+
+<p align="center">
+  <a href="https://github.com/702studio/komorebi-starter/releases/download/v0.3.1/komorebi-starter-sandbox-demo-v1.mp4">
+    <img src="docs/assets/sandbox-demo-v1.gif" width="100%" alt="A real Windows Sandbox run showing the one-command Komorebi Starter installation, tiled windows, workspace changes, retile behavior, and an agent-issued workspace command.">
+  </a>
+</p>
+
+This is a real, clean Windows Sandbox run of the public command below. WinGet
+and Sandbox-only graphics compatibility are prepared before capture. Open the
+preview for the [full 60-second H.264 recording](https://github.com/702studio/komorebi-starter/releases/download/v0.3.1/komorebi-starter-sandbox-demo-v1.mp4)
+and its [SHA-256 file](https://github.com/702studio/komorebi-starter/releases/download/v0.3.1/komorebi-starter-sandbox-demo-v1.mp4.sha256).
+
 ## Install in one command
 
 Open **Windows PowerShell** and run:
